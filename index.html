@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      The gateway REQUIRES this marker in the entry document.
+
+      The UI origin is served with SPA fallback: a request for a document it
+      does not have returns this same entry with a 200. Without a positive
+      marker the Playground host could serve the wrong app, which is the one
+      outcome the dedicated host exists to prevent. The gateway answers
+      `playground_ui_entry_missing` (503) when this is absent, so a missing
+      bundle is visibly broken instead of quietly being the wrong app.
+    -->
+    <meta name="ato-playground-entry" content="1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#adc8c8" />
+    <meta name="color-scheme" content="only light" />
+    <meta name="description" content="Ato Plaza — one shared Lobby" />
+    <!-- Not indexable: one shared room, not a landing page. -->
+    <meta name="robots" content="noindex" />
+    <title>Plaza — Ato</title>
+    <link rel="icon" type="image/png" href="/plaza-icon.png" />
+  </head>
+  <body>
+    <div id="playground-root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

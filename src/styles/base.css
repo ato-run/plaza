@@ -1,0 +1,29 @@
+/**
+ * Plaza base styles.
+ *
+ * The HUD itself is fully self-contained in `../playground/playground.css`
+ * (every rule is scoped to `.pg-*`, no variables, no utilities). This file
+ * only owns the document around the canvas: a marginless full-viewport root
+ * so the fixed `.pg` shell has no white frame, even before React mounts.
+ */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #adc8c8;
+  overscroll-behavior: none;
+}
+
+#playground-root {
+  min-height: 100dvh;
+}
+
+#playground-root:empty {
+  position: fixed;
+  inset: 0;
+  background: #adc8c8;
+}

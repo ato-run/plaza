@@ -1,0 +1,686 @@
+/**
+ * Playground HUD.
+ *
+ * Everything here floats over a full-viewport WebGL canvas, so the rules are
+ * different from the rest of the PWA: the canvas owns the background, panels
+ * are translucent so the world stays visible behind them, and nothing may
+ * capture pointer events unless it is genuinely interactive — a stray
+ * `pointer-events: auto` on an overlay silently breaks look-and-move.
+ *
+ * The palette is the reference world's, kept deliberately: these controls sit
+ * on that specific sky and grass, and the app's own tokens (tuned for a white
+ * document) disappear against it.
+ */
+
+.pg {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Noto Sans JP", sans-serif;
+  color: #213e36;
+  background: #adc8c8;
+  /* Phones with a notch: keep the HUD out from under it. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.pg-world {
+  position: absolute;
+  inset: 0;
+}
+
+.pg-world canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Without this the browser pans/zooms the page instead of passing the
+     gesture to look-and-move. */
+  touch-action: none;
+}
+
+/* ---- chrome ------------------------------------------------------------ */
+
+.pg-topbar {
+  position: absolute;
+  top: calc(22px + env(safe-area-inset-top));
+  left: 24px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  pointer-events: none;
+}
+
+.pg-brand {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -1.5px;
+  color: #173a32;
+}
+
+.pg-brand-dot {
+  color: #27815c;
+}
+
+.pg-brand-sub {
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.3px;
+  margin-left: 10px;
+}
+
+.pg-room {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(12px);
+  padding: 11px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.71);
+  border-radius: 30px;
+  font-size: 12px;
+  letter-spacing: 1.4px;
+  font-weight: 600;
+}
+
+.pg-live {
+  width: 6px;
+  height: 6px;
+  background: #368863;
+  border-radius: 50%;
+}
+
+/* Disconnected is a real state, and a HUD that hides it is lying. */
+.pg-live--off {
+  background: #c0743f;
+}
+
+.pg-room-count {
+  border-left: 1px solid #bed0c7;
+  padding-left: 10px;
+}
+
+/* The room chip is a button now: it opens the World Selector. Interactive, so
+   it opts back INTO pointer events the topbar gives up. */
+button.pg-room {
+  pointer-events: auto;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  letter-spacing: 1.4px;
+}
+
+button.pg-room:hover {
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.pg-room-index {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.55;
+}
+
+.pg-selector-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(16, 30, 26, 0.28);
+  pointer-events: auto;
+  cursor: default;
+  z-index: 6;
+}
+
+.pg-selector {
+  position: absolute;
+  top: calc(74px + env(safe-area-inset-top));
+  right: 24px;
+  width: min(340px, calc(100vw - 32px));
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  padding: 14px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 18px 48px rgba(20, 40, 32, 0.22);
+  pointer-events: auto;
+  z-index: 7;
+}
+
+.pg-selector h2 {
+  margin: 2px 6px 10px;
+  font-size: 12px;
+  letter-spacing: 1.6px;
+  font-weight: 700;
+  color: #587065;
+}
+
+.pg-selector ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pg-selector-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  font: inherit;
+  color: #22403a;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pg-selector-item:hover:not(:disabled) {
+  background: rgba(66, 122, 96, 0.12);
+}
+
+/* Unavailable Worlds stay legible rather than being greyed to nothing: they
+   are part of what Playground is, and the selector is where that is shown. */
+.pg-selector-item:disabled {
+  cursor: default;
+  opacity: 0.62;
+}
+
+.pg-selector-item--here {
+  background: rgba(66, 122, 96, 0.14);
+  opacity: 1;
+}
+
+.pg-selector-index {
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #7d9184;
+}
+
+.pg-selector-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pg-selector-body strong {
+  font-size: 13px;
+  letter-spacing: 0.6px;
+}
+
+.pg-selector-body small {
+  font-size: 11px;
+  color: #607668;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pg-selector-count {
+  font-size: 11px;
+  color: #4c7a5f;
+  white-space: nowrap;
+}
+
+/* A guide's tag reads differently from a person's: same shape, quieter, so a
+   mascot is not mistaken for somebody who will answer. */
+.pg-nametag--mascot {
+  background: rgba(255, 255, 255, 0.72);
+  color: #52685c;
+  font-style: italic;
+}
+
+.pg-crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 22px;
+  font-weight: 300;
+  color: #fff;
+  text-shadow: 0 1px 4px #234;
+  pointer-events: none;
+}
+
+.pg-interaction {
+  position: absolute;
+  top: 57%;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  color: #fff;
+  text-shadow: 0 1px 5px #234;
+  min-width: 150px;
+}
+
+.pg-interaction-kind {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 2px;
+}
+
+.pg-interaction strong {
+  display: block;
+  font-size: 20px;
+  margin: 6px;
+}
+
+.pg-interaction button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: auto;
+  border: 0;
+  border-radius: 9px;
+  background: #fff;
+  color: #254637;
+  padding: 11px 16px;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.pg-enter {
+  position: absolute;
+  left: 50%;
+  bottom: 190px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 5px 25px rgba(24, 53, 41, 0.08);
+  padding: 13px 22px;
+  font: inherit;
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pg-enter:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.pg-reactions {
+  position: absolute;
+  bottom: 110px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(15px);
+}
+
+.pg-reactions button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 13px;
+  background: transparent;
+  padding: 7px 11px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pg-reactions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pg-reactions button:not(:disabled):hover {
+  background: #fff;
+}
+
+.pg-reactions span {
+  font-size: 22px;
+}
+
+kbd {
+  font-family: inherit;
+  font-size: 11px;
+  border: 1px solid rgba(111, 133, 117, 0.19);
+  border-radius: 4px;
+  min-width: 21px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.19);
+  color: #5c7168;
+}
+
+.pg-bottom {
+  position: absolute;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  left: 24px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.pg-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pg-identity-emoji {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.75);
+  border: 2px solid rgba(255, 255, 255, 0.44);
+  font-size: 18px;
+}
+
+.pg-identity strong {
+  display: block;
+  font-size: 14px;
+  color: #183b31;
+}
+
+.pg-identity small {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: #3e6557;
+}
+
+.pg-keys {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font-size: 12px;
+  color: #335446;
+}
+
+.pg-keys > span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pg-chat-open {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 11px 18px;
+  font: inherit;
+  font-size: 14px;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.pg-compose {
+  position: absolute;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(530px, 92vw);
+  padding: 11px;
+  border: 1px solid #d4e0d9;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 8px 40px rgba(24, 58, 52, 0.19);
+}
+
+.pg-compose input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  font: inherit;
+  /* 16px keeps iOS from zooming the viewport when the field takes focus,
+     which would otherwise leave the composer scrolled off-screen. */
+  font-size: 16px;
+}
+
+.pg-compose button {
+  border: 0;
+  background: #295d49;
+  color: #fff;
+  border-radius: 9px;
+  padding: 9px 14px;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.pg-compose button[type="button"] {
+  background: transparent;
+  color: #55705f;
+}
+
+.pg-compose button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pg-remaining {
+  font-size: 12px;
+  color: #6a8676;
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-remaining--over {
+  color: #b3452f;
+  font-weight: 700;
+}
+
+.pg-notice {
+  position: absolute;
+  top: 92px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 90vw;
+  padding: 11px 16px;
+  border-radius: 10px;
+  background: #fffef3;
+  box-shadow: 0 4px 20px rgba(24, 58, 52, 0.15);
+  font-size: 13px;
+}
+
+.pg-notice button {
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* ---- world labels (created imperatively by avatar.ts) ------------------- */
+
+.pg-label {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translate(-50%, -100%);
+  white-space: nowrap;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.pg-nametag {
+  background: rgba(255, 255, 255, 0.93);
+  padding: 6px 13px;
+  border-radius: 20px;
+  font-size: 12px;
+  color: #324c41;
+  box-shadow: 0 3px 15px rgba(32, 59, 53, 0.13);
+}
+
+.pg-speech {
+  max-width: 230px;
+  margin-bottom: 9px;
+  padding: 10px 15px;
+  border-radius: 14px 14px 14px 2px;
+  background: #fff;
+  box-shadow: 0 3px 15px rgba(32, 59, 53, 0.13);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: normal;
+}
+
+.pg-reaction {
+  margin-bottom: 5px;
+  font-size: 36px;
+  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.13));
+}
+
+/* ---- touch ------------------------------------------------------------- */
+
+.pg-joystick {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .pg-joystick {
+    display: block;
+    position: absolute;
+    left: 26px;
+    bottom: calc(120px + env(safe-area-inset-bottom));
+    width: 104px;
+    height: 104px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.69);
+    background: rgba(255, 255, 255, 0.19);
+    touch-action: none;
+  }
+
+  .pg-joystick > div {
+    position: absolute;
+    left: 30px;
+    top: 30px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.79);
+    box-shadow: 0 2px 10px rgba(34, 68, 51, 0.2);
+    pointer-events: none;
+  }
+
+  /* No pointer to lock and no keyboard to hint at. */
+  .pg-keys,
+  .pg-enter,
+  .pg-reactions kbd,
+  .pg-interaction kbd {
+    display: none;
+  }
+
+  .pg-reactions {
+    left: auto;
+    right: 20px;
+    transform: none;
+    bottom: calc(130px + env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    padding: 5px;
+  }
+}
+
+@media (max-width: 650px) {
+  .pg-topbar {
+    left: 16px;
+    right: 16px;
+  }
+
+  .pg-brand-sub {
+    display: none;
+  }
+
+  .pg-bottom {
+    left: 16px;
+    right: 16px;
+  }
+
+  .pg-keys {
+    display: none;
+  }
+
+  .pg-compose {
+    bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+}
+
+/* A reaction aimed at the viewer. Sits just under the crosshair — where the
+   eye already is — rather than in a corner, because it is a reply to whoever
+   you are looking at. Non-interactive, so it never steals a click from the
+   world beneath it. */
+.pg-self-reaction {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 44px);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 6px 20px rgba(24, 42, 32, 0.16);
+  pointer-events: none;
+  animation: pg-self-reaction-in 180ms ease-out;
+  z-index: 5;
+}
+
+.pg-self-reaction-emoji {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.pg-self-reaction-from {
+  font-size: 13px;
+  color: #4a5b50;
+  white-space: nowrap;
+}
+
+@keyframes pg-self-reaction-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The world already stops its idle bob and walk cycle; make sure no HUD
+     transition reintroduces movement. */
+  .pg *,
+  .pg *::before,
+  .pg *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
