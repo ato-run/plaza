@@ -228,6 +228,7 @@ export function roomOpToEvent(
           public_app_ref: post.app_ref ?? null,
           public_activity_ref: post.activity_ref ?? null,
           created_at: post.created_at,
+          world: post.world,
         },
       };
     }
@@ -296,6 +297,7 @@ function postFromMapped(event: PlaygroundEvent): PlaygroundPost | null {
   if (event.kind !== "post.created") return null;
   const raw = event.payload as Record<string, unknown>;
   if (typeof raw.id !== "string") return null;
+  const world = raw.world;
   return {
     id: raw.id,
     author_user_id: typeof raw.author_user_id === "string" ? raw.author_user_id : "",
@@ -307,6 +309,7 @@ function postFromMapped(event: PlaygroundEvent): PlaygroundPost | null {
     created_at: typeof raw.created_at === "string" ? raw.created_at : new Date().toISOString(),
     reactions: {},
     viewer_reactions: [],
+    world: isWorldId(world) ? world : null,
   };
 }
 /** Sealed Plaza state: the latest posts plus the cursor they cover. */
@@ -332,14 +335,16 @@ function isSealPayload(value: unknown): value is PlazaSealPayload {
 
 /**
  * Bootstrap the durable lane from a room seal + suffix, for one World.
- * Mutes are viewer-local (the room has no per-user store): they pass
- * through from the previous state.
+ * The seal holds ALL Worlds' posts (with World tags); only this World's
+ * posts (plus untagged legacy posts) restore. Mutes are viewer-local (the
+ * room has no per-user store): they pass through from the previous state.
  */
 export function roomBootstrapToState(
   previous: PlaygroundState,
   viewer: PlaygroundViewer,
   seal: unknown,
   online: number,
+  world: WorldId,
 ): PlaygroundState {
   const posts = new Map<string, PlaygroundPost>();
   const order: string[] = [];
@@ -347,6 +352,8 @@ export function roomBootstrapToState(
   if (isSealPayload(seal)) {
     for (const post of seal.posts) {
       if (!post || typeof post.id !== "string" || posts.has(post.id)) continue;
+      const postWorld = isWorldId(post.world) ? post.world : null;
+      if (postWorld !== null && postWorld !== world) continue;
       posts.set(post.id, {
         ...post,
         reactions: post.reactions ?? {},

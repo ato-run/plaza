@@ -60,6 +60,12 @@ export interface PlaygroundPost {
   reactions: Record<string, number>;
   /** The emoji THIS viewer has on this post. */
   viewer_reactions: string[];
+  /**
+   * World this post belongs to. Set on the App Room path (ops carry it);
+   * absent on the legacy path, where the server filtered by World before
+   * sending. Seals persist it so a restore can filter per World.
+   */
+  world?: PlaygroundWorldId | null;
 }
 
 /** Server-owned public projection. No owner, instance id, or invite token. */

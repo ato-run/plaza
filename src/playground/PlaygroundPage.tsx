@@ -501,7 +501,13 @@ export default function PlaygroundPage() {
         const previous = opts?.fresh
           ? { ...createPlaygroundState(), mutedUserIds: current.mutedUserIds }
           : current;
-        return roomBootstrapToState(previous, viewer, boot.checkpoint_payload, 0);
+        return roomBootstrapToState(
+          previous,
+          viewer,
+          boot.checkpoint_payload,
+          0,
+          worldIdRef.current,
+        );
       });
       setError(null);
       await catchUpRoomRef.current();

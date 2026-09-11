@@ -27,6 +27,7 @@ import type {
   PlaygroundPost,
   PlaygroundViewer,
 } from "./types";
+import { isWorldId } from "./world/types";
 
 export interface PlaygroundState {
   roomId: string | null;
@@ -62,6 +63,7 @@ function postFromEventPayload(payload: unknown): PlaygroundPost | null {
   if (!payload || typeof payload !== "object") return null;
   const raw = payload as Record<string, unknown>;
   if (typeof raw.id !== "string") return null;
+  const world = raw.world;
   return {
     id: raw.id,
     author_user_id: typeof raw.author_user_id === "string" ? raw.author_user_id : "",
@@ -83,6 +85,9 @@ function postFromEventPayload(payload: unknown): PlaygroundPost | null {
       typeof raw.created_at === "string" ? raw.created_at : new Date().toISOString(),
     reactions: {},
     viewer_reactions: [],
+    // App Room ops carry the World; legacy server payloads predate it and
+    // stay undefined (the server filtered before sending).
+    world: isWorldId(world) ? world : undefined,
   };
 }
 
