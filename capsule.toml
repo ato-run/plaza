@@ -1,0 +1,33 @@
+# Plaza — one shared lobby (Authoring Manifest v1).
+#
+# Static web output: `npm ci && npm run build` produces `dist/` and the room
+# serves `dist/index.html`. The bundle talks to the serving instance host's
+# standard room API (same-origin `/__ato/app-room/*`); no backend to run, no
+# port to bind, no secrets to configure.
+
+schema_version = "1"
+name = "plaza"
+version = "0.1.0"
+
+[source]
+root = "."
+ignore = ["node_modules", "dist"]
+
+[metadata]
+short_description = "みんなが集まる一つの広場。歩いて、話して、見つけたものを試す。"
+description = "Ato Plaza is one shared lobby as a first-person 3D world. Each instance hosts its own room: walk, talk to the people near you, and open what you find. Apache-2.0, forkable from Discover."
+license = "Apache-2.0"
+tags = ["social", "3d", "realtime", "static", "oss"]
+
+[[build.steps]]
+command = ["sh", "-lc", "npm ci && npm run build"]
+
+# Required by the manifest schema; never executed for static_web output,
+# which is served as files (same placeholder convention as the wizard's own
+# fixtures).
+[run]
+command = ["echo", "plaza is static output"]
+
+[outputs.static_web]
+root = "dist"
+entry_path = "index.html"
