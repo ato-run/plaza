@@ -21,8 +21,6 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { playgroundClient, playgroundSocketUrl } from "./playgroundClient";
-import { PlaygroundRoomClient } from "./PlaygroundRoomClient";
 import { AppRoomTransport, type AppRoomMessage } from "./roomTransport";
 import {
   CATALOG_CARDS_PATH,
@@ -56,7 +54,6 @@ import {
   type PresenceState,
 } from "./presenceStore";
 import {
-  applyBootstrap,
   applyEventsPage,
   bufferEvent,
   createPlaygroundState,
@@ -87,25 +84,6 @@ import "./playground.css";
 
 const TEXT_LIMIT = 200;
 const SIGN_IN_PATH = "/sign-in";
-
-function newOperationId(): string {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `op-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-/** Pull the author and text out of a durable `post.created` payload. */
-function speechFromEvent(
-  payload: unknown,
-): { authorUserId: string; text: string } | null {
-  if (!payload || typeof payload !== "object") return null;
-  const raw = payload as Record<string, unknown>;
-  if (raw.kind !== "text") return null;
-  const authorUserId = typeof raw.author_user_id === "string" ? raw.author_user_id : "";
-  const text = typeof raw.text === "string" ? raw.text : "";
-  if (!authorUserId || !text) return null;
-  return { authorUserId, text };
-}
 
 function parseRunnerProjection(value: unknown): PlaygroundRunnerState | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -180,18 +158,8 @@ export default function PlaygroundPage() {
     display_name: string;
     principal_id?: string;
   } | null>(null);
-  /**
-   * Which backend serves this origin: the legacy global-lobby host
-   * (`/__ato/playground/*`) or a normal instance room
-   * (`/__ato/app-room/*`). Probed once per origin — the same bundle runs on
-   * both during the migration, and the room is resolved from the serving
-   * origin, never from the build.
-   */
-  const [backend, setBackend] = useState<"legacy" | "approom" | null>(null);
-
   const hostRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<WorldHandle | null>(null);
-  const roomRef = useRef<PlaygroundRoomClient | null>(null);
   const transportRef = useRef<AppRoomTransport | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   // The reducer runs inside socket callbacks that close over stale state, so
@@ -212,8 +180,8 @@ export default function PlaygroundPage() {
   const runnerDispatchRef = useRef<
     (protocolId: string, kind: string, payload: { type: string }) => boolean
   >(() => false);
-  // ---- App Room backend refs (used only when backend === "approom") ----
-  /** Last hello: identity + rights. Replaces the legacy bootstrap viewer. */
+  // ---- Room refs ----
+  /** Last hello: identity + rights. */
   const helloRef = useRef<AppRoomHello | null>(null);
   /** Mirror of `worldId` state for socket callbacks closing over stale values. */
   const worldIdRef = useRef(worldId);
@@ -224,8 +192,6 @@ export default function PlaygroundPage() {
   const lastTransformRef = useRef<WorldTransformReport | null>(null);
   /** Card-ref key already resolved, so posts don't refetch per render. */
   const cardsFetchedRef = useRef("");
-  const backendRef = useRef(backend);
-  backendRef.current = backend;
 
   useEffect(() => {
     let attached = false;
@@ -420,41 +386,7 @@ export default function PlaygroundPage() {
     };
   }, []);
 
-  const loadBootstrap = useCallback(async () => {
-    try {
-      const bootstrap = await playgroundClient.bootstrap(worldId);
-      setState((current) => applyBootstrap(current, bootstrap));
-      setError(null);
-    } catch {
-      setError("Playground を読み込めませんでした。");
-    }
-  }, [worldId]);
-
-  /** Replay everything after our cursor. The reconnect and `sync` recovery. */
-  const catchUp = useCallback(async () => {
-    try {
-      const from = stateRef.current.cursor;
-      const page = await playgroundClient.events(from, worldId);
-      setState((current) => applyEventsPage(current, page.events, page.cursor));
-    } catch {
-      // A failed catch-up is not fatal: the next event or sync retries it.
-    }
-  }, [worldId]);
-
-  // ---- backend probe: instance room or legacy lobby, per origin ----------
-
-  useEffect(() => {
-    let cancelled = false;
-    const transport = new AppRoomTransport({ onMessage: () => undefined });
-    void transport.probe().then((isRoom) => {
-      if (!cancelled) setBackend(isRoom ? "approom" : "legacy");
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // ---- App Room backend (normal instance room) ----------------------------
+  // ---- Room backend (normal instance room) ----------------------------
 
   /** Map one room op through the current posts + World, then buffer it. */
   const bufferRoomOp = useCallback(
@@ -612,145 +544,11 @@ export default function PlaygroundPage() {
     ) runnerPresentationRef.current = signature;
   }, [controllerPresentation, runnerBacked, state.viewer]);
 
-  useEffect(() => {
-    if (backend !== "legacy") return;
-    void loadBootstrap();
-  }, [loadBootstrap, backend]);
+  // ---- durable lane + presence lane, one socket --------------------------
 
   // ---- durable lane + presence lane, one socket --------------------------
 
   useEffect(() => {
-    if (backend !== "legacy") return;
-    const room = new PlaygroundRoomClient({
-      url: playgroundSocketUrl(worldId),
-      onConnected: () => setConnected(true),
-      onDisconnected: () => setConnected(false),
-      onReconnected: () => {
-        // Bootstrap again for `viewer`/`cards` (a reconnect may follow a
-        // sign-in or a card losing visibility), then replay missed events.
-        void loadBootstrap().then(catchUp);
-      },
-      onMessage: (message) => {
-        const now = performance.now();
-        switch (message.kind) {
-          case "hello":
-            if (!runnerAvailableRef.current) {
-              setState((current) => setOnline(current, message.online));
-              setPresence((current) => ({
-                ...current,
-                self: message.self,
-                worldOnline: message.world_online ?? current.worldOnline,
-              }));
-            }
-            if (isBehind(stateRef.current, message.high_water_cursor)) {
-              void catchUp();
-            }
-            break;
-          case "snapshot":
-            if (runnerAvailableRef.current) break;
-            setPresence((current) =>
-              applySnapshot(
-                current,
-                message.participants,
-                message.online,
-                now,
-                message.world_online,
-              ),
-            );
-            setState((current) => setOnline(current, message.online));
-            break;
-          case "join":
-            if (runnerAvailableRef.current) break;
-            setPresence((current) =>
-              applyJoin(current, message.participant, message.online, now),
-            );
-            setState((current) => setOnline(current, message.online));
-            break;
-          case "leave":
-            if (runnerAvailableRef.current) break;
-            setPresence((current) =>
-              applyLeave(current, message.principal_id, message.online),
-            );
-            setState((current) => setOnline(current, message.online));
-            break;
-          case "typing":
-            if (runnerAvailableRef.current) break;
-            setPresence((current) =>
-              applyTyping(current, message.principal_id, message.typing),
-            );
-            break;
-          case "transform":
-            if (runnerAvailableRef.current) break;
-            setPresence((current) =>
-              applyTransform(current, message.principal_id, message, now),
-            );
-            break;
-          case "face_reaction":
-            if (runnerAvailableRef.current) break;
-            setPresence((current) =>
-              applyFaceReaction(
-                current,
-                message.target_principal_id,
-                message.emoji,
-                now,
-                message.from_principal_id,
-              ),
-            );
-            break;
-          case "event": {
-            setState((current) => bufferEvent(current, message.event));
-            // A bubble is the live appearance of a durable post. Bootstrap
-            // history deliberately does NOT come through here — replaying an
-            // hour of posts as simultaneous bubbles would be nonsense.
-            if (
-              message.event.kind === "post.created" &&
-              !spokenRef.current.has(message.event.seq)
-            ) {
-              const speech = speechFromEvent(message.event.payload);
-              if (speech && !stateRef.current.mutedUserIds.has(speech.authorUserId)) {
-                spokenRef.current.add(message.event.seq);
-                setPresence((current) =>
-                  applySpeech(
-                    current,
-                    runnerAvailableRef.current
-                      ? runnerActorBySocialPrincipalRef.current.get(
-                          principalIdForAuthor(speech.authorUserId),
-                        ) ?? principalIdForAuthor(speech.authorUserId)
-                      : principalIdForAuthor(speech.authorUserId),
-                    speech.text,
-                    now,
-                  ),
-                );
-              }
-            }
-            break;
-          }
-          case "sync":
-            if (!runnerAvailableRef.current) {
-              setState((current) => setOnline(current, message.online));
-            }
-            // The recovery hatch for a lost LAST broadcast, which no later
-            // message would otherwise reveal.
-            if (isBehind(stateRef.current, message.high_water_cursor)) {
-              void catchUp();
-            }
-            break;
-        }
-      },
-      onError: () => setConnected(false),
-    });
-    roomRef.current = room;
-    room.connect();
-    return () => {
-      room.close();
-      roomRef.current = null;
-    };
-  }, [catchUp, loadBootstrap, worldId, backend]);
-
-  // ---- App Room backend: one socket, same lanes, different wire ----------
-
-  useEffect(() => {
-    if (backend !== "approom") return;
     const toParticipant = (
       participant: AppRoomParticipant,
     ): PlaygroundParticipant => ({
@@ -903,18 +701,16 @@ export default function PlaygroundPage() {
       transport.close();
       transportRef.current = null;
     };
-  }, [backend, bufferRoomOp, loadRoom, maybeSeal]);
+  }, [bufferRoomOp, loadRoom, maybeSeal]);
 
   // Signing in happens on the PWA origin; the session cookie is scoped to the
   // parent domain, so coming back to this tab is enough. Re-bootstrap on
   // focus so the controls unlock without a manual reload.
   useEffect(() => {
-    const reload =
-      backendRef.current === "approom" ? () => void loadRoom() : () => void loadBootstrap();
-    const onFocus = () => reload();
+    const onFocus = () => void loadRoom();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [loadBootstrap, loadRoom]);
+  }, [loadRoom]);
 
   // ---- world -------------------------------------------------------------
 
@@ -948,13 +744,11 @@ export default function PlaygroundPage() {
               return;
             }
           }
-          roomRef.current?.sendTransform(transform);
           lastTransformRef.current = transform;
-          if (backendRef.current === "approom") {
-            // Fire-and-forget like the legacy lane: a transform is only
-            // interesting until the next one (~12Hz into a 15/s shared
-            // transient budget; over-budget frames drop server-side).
-            transportRef.current?.sendEphemeral(
+          // Fire-and-forget: a transform is only interesting until the
+          // next one (~12Hz into a 15/s shared transient budget;
+          // over-budget frames drop server-side).
+          transportRef.current?.sendEphemeral(
               PLAZA_EPHEMERAL_TRANSFORM_KIND,
               transform.world_id,
               {
@@ -967,8 +761,7 @@ export default function PlaygroundPage() {
                 pose: transform.pose,
               },
               5000,
-            );
-          }
+          );
         },
         onRequestChat: () => setChatting(true),
         onInteract: (item) => {
@@ -1016,18 +809,12 @@ export default function PlaygroundPage() {
             }
             return;
           }
-          roomRef.current?.sendFaceReaction(
-            principalId,
-            emoji as PlaygroundFaceReaction,
-          );
-          if (backendRef.current === "approom") {
-            transportRef.current?.sendEphemeral(
+          transportRef.current?.sendEphemeral(
               PLAZA_EPHEMERAL_FACE_REACTION_KIND,
               worldIdRef.current,
               { target_principal_id: principalId, emoji },
               2400,
             );
-          }
         },
         onWorldChange: (next) => {
           setWorldId(next);
@@ -1036,7 +823,7 @@ export default function PlaygroundPage() {
           // follow you into the next one.
           setPresence((current) => enterWorld(current, next));
           pendingRunnerSnapshotWorldRef.current = next;
-          if (backendRef.current === "approom") {
+          {
             // Resubscribe delivery to the new World immediately: the room
             // only relays a scope to sockets that sent it, and an idle
             // avatar may not move for a while.
@@ -1143,10 +930,8 @@ export default function PlaygroundPage() {
       } catch {
         // Typing is ephemeral and is not retried after reconnect.
       }
-    } else if (backendRef.current === "approom") {
-      transportRef.current?.sendPresence({ type: "typing", typing: false });
     } else {
-      roomRef.current?.sendTyping(false);
+      transportRef.current?.sendPresence({ type: "typing", typing: false });
     }
     worldRef.current?.setPaused(false);
     worldRef.current?.requestPointerLock();
@@ -1162,22 +947,17 @@ export default function PlaygroundPage() {
       }
       setDraft("");
       try {
-        if (backendRef.current === "approom" && transportRef.current) {
-          const { op } = postOp(text, worldIdRef.current);
-          await transportRef.current.mutate(op);
-          await catchUpRoom();
-          await maybeSeal();
-          void fetchCardsRef.current();
-        } else {
-          await playgroundClient.postText(text, newOperationId(), worldId);
-          await catchUp();
-        }
+        const { op } = postOp(text, worldIdRef.current);
+        await transportRef.current?.mutate(op);
+        await catchUpRoom();
+        await maybeSeal();
+        void fetchCardsRef.current();
       } catch {
         setError("投稿できませんでした。");
       }
       closeChat();
     },
-    [draft, canPost, remaining, catchUp, catchUpRoom, closeChat, maybeSeal, worldId],
+    [draft, canPost, remaining, catchUpRoom, closeChat, maybeSeal],
   );
 
   const online = runnerAvailableRef.current
@@ -1407,10 +1187,8 @@ export default function PlaygroundPage() {
                 } catch {
                   // Typing is ephemeral and is not retried after reconnect.
                 }
-              } else if (backendRef.current === "approom") {
-                transportRef.current?.sendPresence({ type: "typing", typing });
               } else {
-                roomRef.current?.sendTyping(typing);
+                transportRef.current?.sendPresence({ type: "typing", typing });
               }
             }}
             onKeyDown={(event) => {

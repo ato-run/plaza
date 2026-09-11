@@ -36,7 +36,11 @@ import {
   applyTransform,
   createPresenceState,
 } from "./presenceStore";
-import { PlaygroundRoomClient } from "./PlaygroundRoomClient";
+import { AppRoomTransport } from "./roomTransport";
+import {
+  PLAZA_EPHEMERAL_FACE_REACTION_KIND,
+  PLAZA_EPHEMERAL_TRANSFORM_KIND,
+} from "./roomProtocol";
 import type { PlaygroundBootstrap, PlaygroundEvent } from "./types";
 
 /** Captured live, guest viewer, empty lobby. */
@@ -309,8 +313,8 @@ describe("presence lane envelopes", () => {
   });
 });
 
-describe("the socket sends what the server expects", () => {
-  it("sends transform and face_reaction in the agreed shape", () => {
+describe("the socket sends what the room expects", () => {
+  it("sends scoped transforms and reactions in the agreed shape", () => {
     const sent: unknown[] = [];
     const socket = {
       readyState: 1,
@@ -318,32 +322,15 @@ describe("the socket sends what the server expects", () => {
       addEventListener() {},
       close() {},
     };
-    const client = new PlaygroundRoomClient({
-      url: "wss://example.test/__ato/playground/connect",
+    const transport = new AppRoomTransport({
       createWebSocket: () => socket as unknown as WebSocket,
       onMessage() {},
     });
-    client.connect();
-    client.sendTransform({
-      world_id: "central-plaza",
-      x: 1,
-      y: 1.65,
-      z: 2,
-      yaw: 0.5,
-      pitch: 0.1,
-      pose: "stand",
-      movement: "walk",
-    });
-    client.sendFaceReaction("user:bob", "👍");
-    // No `sync` here: this fake never fires `open`, so the client's
-    // on-connect handshake has not run. Only the explicit sends appear.
-    expect(sent).toEqual([
+    transport.connect("wss://example.test/__ato/app-room/connect");
+    transport.sendEphemeral(
+      PLAZA_EPHEMERAL_TRANSFORM_KIND,
+      "central-plaza",
       {
-        type: "transform",
-        // `world_id` rides on every transform: it is what scopes the
-        // broadcast, so a client that omitted it would be relayed to the
-        // default World regardless of where it actually is.
-        world_id: "central-plaza",
         x: 1,
         y: 1.65,
         z: 2,
@@ -352,7 +339,41 @@ describe("the socket sends what the server expects", () => {
         pose: "stand",
         movement: "walk",
       },
-      { type: "face_reaction", target_principal_id: "user:bob", emoji: "👍" },
+      5000,
+    );
+    transport.sendEphemeral(
+      PLAZA_EPHEMERAL_FACE_REACTION_KIND,
+      "central-plaza",
+      { target_principal_id: "user:bob", emoji: "👍" },
+      2400,
+    );
+    // No `sync` here: `open` never fired, so the on-connect handshake has
+    // not run. Only the explicit sends appear.
+    expect(sent).toEqual([
+      {
+        type: "ephemeral",
+        kind: PLAZA_EPHEMERAL_TRANSFORM_KIND,
+        // `scope` rides on every transform: it is what scopes delivery to
+        // the World, so a client that omitted it would spray every World.
+        scope: "central-plaza",
+        payload: {
+          x: 1,
+          y: 1.65,
+          z: 2,
+          yaw: 0.5,
+          pitch: 0.1,
+          pose: "stand",
+          movement: "walk",
+        },
+        ttl_ms: 5000,
+      },
+      {
+        type: "ephemeral",
+        kind: PLAZA_EPHEMERAL_FACE_REACTION_KIND,
+        scope: "central-plaza",
+        payload: { target_principal_id: "user:bob", emoji: "👍" },
+        ttl_ms: 2400,
+      },
     ]);
   });
 });

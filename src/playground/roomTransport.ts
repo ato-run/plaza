@@ -102,15 +102,6 @@ export class AppRoomTransport {
     this.options = options;
   }
 
-  async probe(): Promise<boolean> {
-    try {
-      const boot = await this.bootstrap();
-      return typeof boot.room_epoch === "number";
-    } catch {
-      return false;
-    }
-  }
-
   bootstrap(): Promise<AppRoomBootstrap> {
     return request<AppRoomBootstrap>("/bootstrap");
   }
@@ -149,16 +140,16 @@ export class AppRoomTransport {
     });
   }
 
-  connect(): void {
+  connect(url: string = roomSocketUrl()): void {
     if (this.socket) return;
     this.intentionallyClosed = false;
     this.clearPendingReconnect();
     const create =
       this.options.createWebSocket ??
-      ((url: string, protocols: string[]) => new WebSocket(url, protocols));
+      ((target: string, protocols: string[]) => new WebSocket(target, protocols));
     let socket: WebSocket;
     try {
-      socket = create(roomSocketUrl(), [APP_ROOM_WEBSOCKET_PROTOCOL]);
+      socket = create(url, [APP_ROOM_WEBSOCKET_PROTOCOL]);
     } catch {
       this.scheduleReconnect();
       return;
