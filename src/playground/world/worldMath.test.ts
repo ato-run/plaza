@@ -3,11 +3,18 @@ import { describe, expect, it } from "vitest";
 import {
   chooseTarget,
   clampPitch,
+  CROUCH_EYE_HEIGHT,
+  EYE_HEIGHT,
+  eyeHeightForPose,
+  GRAVITY,
+  JUMP_VELOCITY,
   movementVector,
+  reportEyeY,
   sanitizeTransform,
   SendCadence,
   shortestAngleDelta,
   smoothing,
+  stepVertical,
   WORLD_RADIUS,
 } from "./worldMath";
 import { circle, isPositionValid, resolveMovement } from "./collision";
@@ -225,9 +232,95 @@ describe("sanitizeTransform", () => {
     );
   });
 
+  it("accepts jump and crouch", () => {
+    expect(
+      sanitizeTransform({ ...valid, movement: "jump", pose: "crouch" }),
+    ).toEqual({ ...valid, movement: "jump", pose: "crouch" });
+  });
+
+  it("treats an unknown pose as standing", () => {
+    expect(sanitizeTransform({ ...valid, pose: "prone" })?.pose).toBe("stand");
+  });
+
   it("rejects junk", () => {
     expect(sanitizeTransform(null)).toBeNull();
     expect(sanitizeTransform("nope")).toBeNull();
     expect(sanitizeTransform({})).toBeNull();
+  });
+});
+
+describe("crouch eye height", () => {
+  it("lowers the first-person eye when crouching", () => {
+    expect(eyeHeightForPose("crouch")).toBeCloseTo(CROUCH_EYE_HEIGHT, 6);
+    expect(eyeHeightForPose("stand")).toBeCloseTo(EYE_HEIGHT, 6);
+    expect(eyeHeightForPose("sit")).toBeCloseTo(EYE_HEIGHT, 6);
+    expect(CROUCH_EYE_HEIGHT).toBeLessThan(EYE_HEIGHT);
+  });
+
+  it("reports a stand-based y so pose-unaware clients keep the right feet", () => {
+    const cameraY = 1.05;
+    expect(reportEyeY(cameraY, "crouch")).toBeCloseTo(EYE_HEIGHT, 6);
+    expect(reportEyeY(EYE_HEIGHT, "stand")).toBeCloseTo(EYE_HEIGHT, 6);
+  });
+});
+
+describe("stepVertical", () => {
+  it("leaves the ground with the jump velocity on request", () => {
+    const next = stepVertical(
+      { y: EYE_HEIGHT, vy: 0, grounded: true },
+      1 / 60,
+      EYE_HEIGHT,
+      true,
+    );
+    expect(next.grounded).toBe(false);
+    expect(next.vy).toBeCloseTo(JUMP_VELOCITY, 6);
+  });
+
+  it("rises then falls back and lands", () => {
+    let state = stepVertical(
+      { y: EYE_HEIGHT, vy: 0, grounded: true },
+      1 / 60,
+      EYE_HEIGHT,
+      true,
+    );
+    let peak = state.y;
+    // Integrate until landing, bounding the loop so a regression fails fast.
+    for (let i = 0; i < 600 && !state.grounded; i += 1) {
+      state = stepVertical(state, 1 / 60, EYE_HEIGHT, false);
+      peak = Math.max(peak, state.y);
+    }
+    expect(state.grounded).toBe(true);
+    expect(state.y).toBeCloseTo(EYE_HEIGHT, 6);
+    // ~0.85m high: visible, not a moon jump.
+    expect(peak - EYE_HEIGHT).toBeGreaterThan(0.5);
+    expect(peak - EYE_HEIGHT).toBeLessThan(1.2);
+  });
+
+  it("sticks to small terrain changes while grounded", () => {
+    const next = stepVertical(
+      { y: EYE_HEIGHT, vy: 0, grounded: true },
+      1 / 60,
+      EYE_HEIGHT + 0.1,
+      false,
+    );
+    expect(next.grounded).toBe(true);
+    expect(next.y).toBeCloseTo(EYE_HEIGHT + 0.1, 6);
+  });
+
+  it("falls instead of snapping when the ground drops away", () => {
+    const next = stepVertical(
+      { y: EYE_HEIGHT, vy: 0, grounded: true },
+      1 / 60,
+      EYE_HEIGHT - 1,
+      false,
+    );
+    expect(next.grounded).toBe(false);
+  });
+
+  it("ignores jump requests mid-air rather than double-jumping", () => {
+    const air = { y: EYE_HEIGHT + 0.4, vy: 1, grounded: false };
+    const next = stepVertical(air, 1 / 60, EYE_HEIGHT, true);
+    expect(next.vy).toBeCloseTo(1 - GRAVITY / 60, 6);
+    expect(next.grounded).toBe(false);
   });
 });

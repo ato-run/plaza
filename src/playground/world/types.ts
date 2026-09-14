@@ -60,8 +60,8 @@ export function worldIdOr(value: unknown, fallback: WorldId = DEFAULT_WORLD_ID):
   return isWorldId(value) ? value : fallback;
 }
 
-/** Standing, or sitting on something the World provided to sit on. */
-export type Pose = "stand" | "sit";
+/** Standing, sitting on something the World provided, or crouching on your own. */
+export type Pose = "stand" | "sit" | "crouch";
 
 export interface WorldSpawn {
   x: number;

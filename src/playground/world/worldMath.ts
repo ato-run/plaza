@@ -19,6 +19,17 @@
 
 export const EYE_HEIGHT = 1.65;
 export const WALK_SPEED = 3.4;
+/** Crouched eye height. The view drops; the reported transform does not (see below). */
+export const CROUCH_EYE_HEIGHT = 1.05;
+/** How much lower the eye sits when crouching. Added back when reporting. */
+export const CROUCH_EYE_DROP = EYE_HEIGHT - CROUCH_EYE_HEIGHT;
+/** Crouched movement is deliberately slow: half the walk speed. */
+export const CROUCH_SPEED = 1.7;
+/** Jump tuning: ~0.85m high, ~0.74s airborne. */
+export const JUMP_VELOCITY = 4.6;
+export const GRAVITY = 12.5;
+/** A ground drop larger than this means walking off an edge: fall, don't snap. */
+export const STEP_DOWN_THRESHOLD = 0.35;
 export const WORLD_RADIUS = 22;
 export const MAX_PITCH = 1.2;
 /** Beyond this a target is out of reach even when perfectly centred. */
@@ -37,7 +48,33 @@ export interface Vec2 {
   z: number;
 }
 
-export type MovementState = "idle" | "walk";
+export type MovementState = "idle" | "walk" | "jump";
+
+/** Standing, sitting on World furniture, or crouching under the reporter's own control. */
+export type LocomotionPose = "stand" | "sit" | "crouch";
+
+/**
+ * Eye height for a pose, FIRST-PERSON view.
+ *
+ * `sit` keeps the standing height here on purpose: sitting is rendered by
+ * dropping the remote body (see `avatar.ts` SIT_DROP), and the sender never
+ * lowers its own report for it — so a client that ignores the pose still
+ * stands at the right feet instead of sunk into the floor. Crouch follows
+ * the same rule on the WIRE (the reported `y` stays stand-based; see
+ * `reportEyeY`), while the local camera genuinely drops to this height.
+ */
+export function eyeHeightForPose(pose: LocomotionPose): number {
+  return pose === "crouch" ? CROUCH_EYE_HEIGHT : EYE_HEIGHT;
+}
+
+/**
+ * What `y` a transform carries: feet + EYE_HEIGHT + jump lift, REGARDLESS of
+ * pose. A crouched sender's camera sits lower, but the report adds
+ * CROUCH_EYE_DROP back so old clients (pose-unaware) keep the right feet.
+ */
+export function reportEyeY(cameraY: number, pose: LocomotionPose): number {
+  return cameraY + (pose === "crouch" ? CROUCH_EYE_DROP : 0);
+}
 
 /**
  * Turn held keys and joystick deflection into a world-space velocity.
@@ -63,6 +100,48 @@ export function movementVector(
   const vx = (right * Math.cos(yaw) - forward * Math.sin(yaw)) * dt * speed;
   const vz = (-right * Math.sin(yaw) - forward * Math.cos(yaw)) * dt * speed;
   return { vx, vz, magnitude };
+}
+
+export interface VerticalState {
+  /** Eye height (camera y). */
+  y: number;
+  vy: number;
+  grounded: boolean;
+}
+
+/**
+ * One step of jump/gravity integration. Pure, so the arc is testable without
+ * a renderer.
+ *
+ * `groundEye` is where the eye rests when standing on the ground below
+ * (ground + pose eye height). Grounded + jump request leaves with
+ * JUMP_VELOCITY; airborne integrates gravity and lands at or below the
+ * ground. Grounded without a jump sticks to small terrain changes but becomes
+ * airborne (vy=0, falling) when the ground falls away beyond
+ * STEP_DOWN_THRESHOLD, so walking off a future deck falls instead of
+ * teleporting down.
+ */
+export function stepVertical(
+  state: VerticalState,
+  dt: number,
+  groundEye: number,
+  jumpRequested: boolean,
+): VerticalState {
+  if (state.grounded) {
+    if (jumpRequested) {
+      return { y: state.y, vy: JUMP_VELOCITY, grounded: false };
+    }
+    if (groundEye < state.y - STEP_DOWN_THRESHOLD) {
+      return { y: state.y, vy: 0, grounded: false };
+    }
+    return { y: groundEye, vy: 0, grounded: true };
+  }
+  const vy = state.vy - GRAVITY * dt;
+  const y = state.y + vy * dt;
+  if (y <= groundEye) {
+    return { y: groundEye, vy: 0, grounded: true };
+  }
+  return { y, vy, grounded: false };
 }
 
 export function clampPitch(pitch: number, limit = MAX_PITCH): number {
@@ -185,8 +264,12 @@ export interface RemoteTransform {
   yaw: number;
   pitch: number;
   movement: MovementState;
-  /** Sitting is a World affordance, not a movement. */
-  pose: "stand" | "sit";
+  /**
+   * Sitting is a World affordance, not a movement. Crouching is the reporter's
+   * own posture: visual only, the reported `y` stays stand-based (see
+   * `reportEyeY`) so pose-unaware clients keep the right feet.
+   */
+  pose: LocomotionPose;
 }
 
 /**
@@ -214,11 +297,15 @@ export function sanitizeTransform(input: unknown): RemoteTransform | null {
     return null;
   }
   if (values.y < TRANSFORM_Y_MIN || values.y > TRANSFORM_Y_MAX) return null;
-  const movement = raw.movement === "walk" ? "walk" : "idle";
+  const movement: MovementState =
+    raw.movement === "walk" ? "walk" : raw.movement === "jump" ? "jump" : "idle";
   // Unknown pose defaults to standing rather than rejecting the whole message:
-  // a position is still useful, and a server that later adds a third pose
-  // should not make everybody invisible to older clients.
-  const pose = raw.pose === "sit" ? "sit" : "stand";
+  // a position is still useful, and a server that later adds a fourth pose
+  // should not make everybody invisible to older clients. (Crouch senders keep
+  // a stand-based `y`, so an old client renders them standing at the right
+  // feet; jump degrades to idle limbs with the arc still visible in `y`.)
+  const pose: LocomotionPose =
+    raw.pose === "sit" ? "sit" : raw.pose === "crouch" ? "crouch" : "stand";
   return {
     x: values.x,
     y: values.y,

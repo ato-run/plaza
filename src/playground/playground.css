@@ -561,6 +561,10 @@ kbd {
   display: none;
 }
 
+.pg-actions {
+  display: none;
+}
+
 @media (pointer: coarse) {
   .pg-joystick {
     display: block;
@@ -585,6 +589,33 @@ kbd {
     background: rgba(255, 255, 255, 0.79);
     box-shadow: 0 2px 10px rgba(34, 68, 51, 0.2);
     pointer-events: none;
+  }
+
+  .pg-actions {
+    display: flex;
+    position: absolute;
+    right: 20px;
+    bottom: calc(220px + env(safe-area-inset-bottom));
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .pg-action {
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.69);
+    background: rgba(255, 255, 255, 0.55);
+    color: #254637;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  .pg-action--active {
+    background: #295d49;
+    color: #fff;
   }
 
   /* No pointer to lock and no keyboard to hint at. */

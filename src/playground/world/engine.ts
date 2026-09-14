@@ -15,19 +15,24 @@ import * as THREE from "three";
 import { resolveMovement, type Collider } from "./collision";
 import { createWorldBuilder, type WorldBuilder } from "./primitives";
 import {
+  CROUCH_EYE_HEIGHT,
+  CROUCH_SPEED,
   EYE_HEIGHT,
   clampPitch,
   movementVector,
+  stepVertical,
   SendCadence,
   WORLD_RADIUS,
   type MovementState,
 } from "./worldMath";
-import type { WorldDefinition, WorldRuntime } from "./types";
+import type { Pose, WorldDefinition, WorldRuntime } from "./types";
 
 export interface EngineFrame {
   now: number;
   dt: number;
   movement: MovementState;
+  /** Locomotion posture. Seats override this in `world.ts`; the engine reports stand/crouch. */
+  pose: Pose;
   forward: THREE.Vector3;
 }
 
@@ -52,6 +57,10 @@ export interface Engine {
   requestPointerLock(): void;
   setPaused(paused: boolean): void;
   setJoystick(x: number, y: number): void;
+  /** Touch jump button (keyboard uses Space). Ignored while paused. */
+  jump(): void;
+  /** Touch crouch toggle. ORed with the held C / Control keys. */
+  setCrouching(crouching: boolean): void;
   /** Screen position for a world point, or null when off-screen/behind. */
   project(point: THREE.Vector3): { left: number; top: number; distance: number } | null;
   cadenceDue(now: number): boolean;
@@ -120,6 +129,12 @@ export function createEngine(options: EngineOptions): Engine {
   let lastFrame = performance.now();
   let contextLost = false;
   let frameHandler: ((frame: EngineFrame) => void) | null = null;
+  // Vertical locomotion. `mobileCrouch` is the touch toggle; keyboard crouch
+  // is the held C / Control keys in `keys`. Either crouches.
+  let vy = 0;
+  let grounded = true;
+  let jumpRequested = false;
+  let mobileCrouch = false;
 
   let world: WorldRuntime | null = null;
   let worldRoot: THREE.Group | null = null;
@@ -145,6 +160,7 @@ export function createEngine(options: EngineOptions): Engine {
     locked = document.pointerLockElement === renderer.domElement;
     // Keys held when the lock breaks would otherwise stick down forever.
     keys.clear();
+    jumpRequested = false;
     options.onPointerLockChange(locked);
   });
 
@@ -169,13 +185,26 @@ export function createEngine(options: EngineOptions): Engine {
       options.onInteract();
       return;
     }
+    if (keyboard.code === "Space") {
+      // Jump is edge-triggered; holding Space must not bunny-hop from repeat.
+      if (locked && !keyboard.repeat) {
+        keyboard.preventDefault();
+        jumpRequested = true;
+      }
+      return;
+    }
     const reactionIndex = REACTION_KEYS.indexOf(keyboard.code);
     if (reactionIndex >= 0) {
       options.onReaction(reactionIndex);
       return;
     }
-    if (locked && ["KeyW", "KeyA", "KeyS", "KeyD"].includes(keyboard.code)) {
-      keyboard.preventDefault();
+    if (
+      locked &&
+      ["KeyW", "KeyA", "KeyS", "KeyD", "KeyC", "ControlLeft"].includes(
+        keyboard.code,
+      )
+    ) {
+      if (keyboard.code !== "ControlLeft") keyboard.preventDefault();
       keys.add(keyboard.code);
     }
   });
@@ -183,6 +212,7 @@ export function createEngine(options: EngineOptions): Engine {
   on(window, "keyup", (event) => keys.delete((event as KeyboardEvent).code));
   on(window, "blur", () => {
     keys.clear();
+    jumpRequested = false;
     joystick.x = 0;
     joystick.y = 0;
   });
@@ -254,7 +284,15 @@ export function createEngine(options: EngineOptions): Engine {
       right = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0) + joystick.x;
       ahead = (keys.has("KeyW") ? 1 : 0) - (keys.has("KeyS") ? 1 : 0) + joystick.y;
     }
-    const { vx, vz, magnitude } = movementVector({ right, forward: ahead }, yaw, dt);
+    const crouching =
+      keys.has("KeyC") || keys.has("ControlLeft") || mobileCrouch;
+    const speed = crouching ? CROUCH_SPEED : undefined;
+    const { vx, vz, magnitude } = movementVector(
+      { right, forward: ahead },
+      yaw,
+      dt,
+      speed,
+    );
     const moved = resolveMovement(
       { x: camera.position.x, z: camera.position.z },
       { vx, vz },
@@ -264,17 +302,31 @@ export function createEngine(options: EngineOptions): Engine {
     );
     camera.position.x = moved.x;
     camera.position.z = moved.z;
-    camera.position.y =
-      (groundY ? groundY(moved.x, moved.z) : 0) + EYE_HEIGHT;
+    // Vertical: stick to small terrain changes, fall off edges, arc on jump.
+    const groundEye =
+      (groundY ? groundY(moved.x, moved.z) : 0) +
+      (crouching ? CROUCH_EYE_HEIGHT : EYE_HEIGHT);
+    const vertical = stepVertical(
+      { y: camera.position.y, vy, grounded },
+      dt,
+      groundEye,
+      jumpRequested && !paused,
+    );
+    jumpRequested = false;
+    vy = vertical.vy;
+    grounded = vertical.grounded;
+    camera.position.y = vertical.y;
     camera.rotation.set(pitch, yaw, 0, "YXZ");
     camera.getWorldDirection(forward);
 
     world?.update?.(dt, now);
 
+    const pose: Pose = crouching ? "crouch" : "stand";
     frameHandler?.({
       now,
       dt,
-      movement: magnitude > 0.05 ? "walk" : "idle",
+      movement: !grounded ? "jump" : magnitude > 0.05 ? "walk" : "idle",
+      pose,
       forward,
     });
 
@@ -340,6 +392,13 @@ export function createEngine(options: EngineOptions): Engine {
       );
       yaw = definition.spawn.yaw;
       pitch = -0.03;
+      // A World change is a teleport: land standing, with no held keys or
+      // queued jump surviving into the new place.
+      vy = 0;
+      grounded = true;
+      jumpRequested = false;
+      mobileCrouch = false;
+      keys.clear();
       // A World change is a teleport; the next transform must go out
       // immediately rather than waiting out the cadence, or peers see the
       // arrival up to 83ms late in the wrong place.
@@ -370,6 +429,7 @@ export function createEngine(options: EngineOptions): Engine {
     setPaused(next) {
       paused = next;
       keys.clear();
+      jumpRequested = false;
       joystick.x = 0;
       joystick.y = 0;
     },
@@ -377,6 +437,14 @@ export function createEngine(options: EngineOptions): Engine {
     setJoystick(x, y) {
       joystick.x = x;
       joystick.y = y;
+    },
+
+    jump() {
+      if (!paused) jumpRequested = true;
+    },
+
+    setCrouching(crouching) {
+      mobileCrouch = crouching;
     },
 
     project(point) {

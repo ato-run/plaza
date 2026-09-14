@@ -19,6 +19,8 @@ import {
   animateAvatar,
   createAvatar,
   disposeAvatar,
+  labelHeightForPose,
+  personAnchorHeightForPose,
   receiveTransform,
   type Avatar,
 } from "./avatar";
@@ -34,6 +36,7 @@ import { circle, type Collider } from "./collision";
 import { DEFAULT_WORLD_ID, type Pose, type WorldId } from "./types";
 import { resolveOpenableWorld, worldDefinition } from "./worlds";
 import type { MovementState } from "./worldMath";
+import { reportEyeY } from "./worldMath";
 import type { PresenceMember } from "../presenceStore";
 
 export type { ExhibitCard } from "./exhibit";
@@ -74,6 +77,10 @@ export interface WorldHandle {
   interactWithTarget(): void;
   /** Mobile joystick, normalized to [-1, 1]. */
   setJoystick(x: number, y: number): void;
+  /** Touch jump button. Keyboard uses Space. */
+  jump(): void;
+  /** Touch crouch toggle. Keyboard holds C / Control. */
+  setCrouching(crouching: boolean): void;
   /** Move to another World. Unavailable ids fall back to the default. */
   enterWorld(worldId: WorldId): void;
   currentWorld(): WorldId;
@@ -87,8 +94,6 @@ function targetLocalId(target: WorldTarget): string {
   if (target.kind === "seat") return target.seatId;
   return "";
 }
-/** How far above a body's feet its name tag floats. */
-const LABEL_HEIGHT = 2.12;
 
 export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle {
   const avatars = new Map<string, Avatar>();
@@ -100,7 +105,9 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
   let worldId: WorldId = DEFAULT_WORLD_ID;
   let exhibitRoot: THREE.Group | null = null;
   let cards: readonly ExhibitCard[] = [];
-  let pose: Pose = "stand";
+  // Seats own the pose when active (future): a seated reporter is rendered by
+  // pose, not by position. Until a World offers one, the engine's locomotion
+  // pose (stand/crouch) is the report.
 
   const engine: Engine = createEngine({
     host,
@@ -162,19 +169,20 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
     }
     engine.mount(definition);
     worldId = definition.id;
-    pose = "stand";
     currentTarget = null;
     lastTargetKey = "";
     rebuildExhibits();
     hooks.onWorldChange(worldId);
   }
 
-  engine.onFrame(({ now, dt, movement, forward }) => {
+  engine.onFrame(({ now, dt, movement, pose, forward }) => {
     if (engine.cadenceDue(now)) {
       hooks.onTransform({
         world_id: worldId,
         x: engine.camera.position.x,
-        y: engine.camera.position.y,
+        // Stand-based `y` (see `reportEyeY`): pose-unaware clients keep the
+        // right feet, and the arc of a jump still reads in the lift.
+        y: reportEyeY(engine.camera.position.y, pose),
         z: engine.camera.position.z,
         yaw: engine.camera.rotation.y,
         pitch: engine.camera.rotation.x,
@@ -192,7 +200,7 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
       name: avatar.nameTag.textContent ?? "",
       position: {
         x: avatar.group.position.x,
-        y: avatar.group.position.y + 1.55,
+        y: avatar.group.position.y + personAnchorHeightForPose(avatar.pose),
         z: avatar.group.position.z,
       },
     }));
@@ -211,7 +219,7 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
     // Project each label to screen space.
     for (const avatar of avatars.values()) {
       const anchor = avatar.group.position.clone();
-      anchor.y += LABEL_HEIGHT;
+      anchor.y += labelHeightForPose(avatar.pose);
       const placed = engine.project(anchor);
       const style = avatar.label.style;
       if (!placed) {
@@ -242,6 +250,8 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
     requestPointerLock: () => engine.requestPointerLock(),
     setPaused: (paused) => engine.setPaused(paused),
     setJoystick: (x, y) => engine.setJoystick(x, y),
+    jump: () => engine.jump(),
+    setCrouching: (crouching) => engine.setCrouching(crouching),
     currentWorld: () => worldId,
 
     enterWorld(next) {

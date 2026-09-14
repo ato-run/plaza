@@ -153,6 +153,7 @@ export default function PlaygroundPage() {
   const [worldReady, setWorldReady] = useState(false);
   const [worldId, setWorldId] = useState<WorldId>(DEFAULT_WORLD_ID);
   const [selectorOpen, setSelectorOpen] = useState(false);
+  const [crouched, setCrouched] = useState(false);
   const [runnerBacked, setRunnerBacked] = useState(false);
   const [controllerPresentation, setControllerPresentation] = useState<{
     display_name: string;
@@ -818,6 +819,7 @@ export default function PlaygroundPage() {
         },
         onWorldChange: (next) => {
           setWorldId(next);
+          setCrouched(false);
           // Clear the roster and re-read the durable lane: posts are
           // World-scoped too, so the previous World's conversation must not
           // follow you into the next one.
@@ -1140,6 +1142,12 @@ export default function PlaygroundPage() {
             <kbd>S</kbd>
             <kbd>D</kbd> 移動
           </span>
+          <span>
+            <kbd>Space</kbd> ジャンプ
+          </span>
+          <span>
+            <kbd>C</kbd> しゃがむ
+          </span>
           <span>マウス 視点</span>
           <span>
             <kbd>esc</kbd> 解除
@@ -1161,6 +1169,32 @@ export default function PlaygroundPage() {
       </footer>
 
       <MobileJoystick onChange={(x, y) => worldRef.current?.setJoystick(x, y)} />
+
+      <div className="pg-actions">
+        <button
+          type="button"
+          className={`pg-action${crouched ? " pg-action--active" : ""}`}
+          aria-pressed={crouched}
+          aria-label="しゃがむ"
+          onClick={() =>
+            setCrouched((previous) => {
+              const next = !previous;
+              worldRef.current?.setCrouching(next);
+              return next;
+            })
+          }
+        >
+          しゃがむ
+        </button>
+        <button
+          type="button"
+          className="pg-action"
+          aria-label="ジャンプ"
+          onClick={() => worldRef.current?.jump()}
+        >
+          ジャンプ
+        </button>
+      </div>
 
       {chatting ? (
         <form className="pg-compose" onSubmit={submit}>

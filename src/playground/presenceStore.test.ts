@@ -115,6 +115,19 @@ describe("transforms", () => {
     const after = applyTransform(before, "user:alice", { x: Number.NaN }, 2000);
     expect(after.members.get("user:alice")?.transform).toEqual(transform);
   });
+
+  it("keeps jump movement and crouch pose from the wire", () => {
+    const state = applyTransform(
+      createPresenceState(),
+      "user:alice",
+      { ...transform, movement: "jump", pose: "crouch" },
+      1000,
+    );
+    expect(state.members.get("user:alice")?.transform).toMatchObject({
+      movement: "jump",
+      pose: "crouch",
+    });
+  });
 });
 
 describe("ephemeral overlays", () => {

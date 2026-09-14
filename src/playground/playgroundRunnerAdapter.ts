@@ -110,7 +110,7 @@ export function createPlaygroundRunnerSync(
       { kind: "transform", description: "Move this Actor in a shared Plaza world.", input_schema: {
         type: "object", properties: { type: { const: "transform" }, world_id: { enum: WORLD_IDS },
           x: { type: "number" }, y: { type: "number" }, z: { type: "number" }, yaw: { type: "number" }, pitch: { type: "number" },
-          movement: { enum: ["idle", "walk"] }, pose: { enum: ["stand", "sit"] } },
+          movement: { enum: ["idle", "walk", "jump"] }, pose: { enum: ["stand", "sit", "crouch"] } },
         required: ["type", "world_id", "x", "y", "z", "yaw", "pitch", "movement", "pose"], additionalProperties: false,
       } },
       { kind: "typing", description: "Share whether this Actor is typing.", input_schema: { type: "object", properties: { type: { const: "typing" }, typing: { type: "boolean" } }, required: ["type", "typing"], additionalProperties: false } },
@@ -373,8 +373,12 @@ function validateTransform(value: unknown): asserts value is RunnerProtocolPaylo
     !finite(transform.z) ||
     !finite(transform.yaw) ||
     !finite(transform.pitch) ||
-    (transform.movement !== "idle" && transform.movement !== "walk") ||
-    (transform.pose !== "stand" && transform.pose !== "sit")
+    (transform.movement !== "idle" &&
+      transform.movement !== "walk" &&
+      transform.movement !== "jump") ||
+    (transform.pose !== "stand" &&
+      transform.pose !== "sit" &&
+      transform.pose !== "crouch")
   ) {
     throw new Error("invalid_transform");
   }

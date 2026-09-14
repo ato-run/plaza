@@ -68,6 +68,34 @@ describe("Playground Runner adapter", () => {
     });
   });
 
+  it("accepts jump movement and crouch pose", () => {
+    const { adapter, projection } = createPlaygroundRunnerSync();
+    const crouched = {
+      ...transform(4),
+      movement: "jump",
+      pose: "crouch",
+    } as unknown as import("../shared/runnerProtocol").RunnerProtocolPayload;
+    adapter.validate("transform", crouched);
+    adapter.apply(crouched, authority("actor_a_01"));
+    expect(projection().members[0].transform).toMatchObject({
+      movement: "jump",
+      pose: "crouch",
+    });
+  });
+
+  it("rejects unknown movement and pose values", () => {
+    const { adapter } = createPlaygroundRunnerSync();
+    expect(() =>
+      adapter.validate("transform", {
+        ...transform(1),
+        movement: "sprint",
+      }),
+    ).toThrow("invalid_transform");
+    expect(() =>
+      adapter.validate("transform", { ...transform(1), pose: "prone" }),
+    ).toThrow("invalid_transform");
+  });
+
   it("rejects unknown Worlds without advancing the revision", () => {
     const { adapter, projection } = createPlaygroundRunnerSync();
     expect(() =>

@@ -28,6 +28,19 @@ import {
 /** How far a seated body drops from its standing height. */
 const SIT_DROP = 0.42;
 
+/** How much a crouched body compresses vertically (group scale). */
+const CROUCH_SCALE_Y = 0.8;
+
+/** Name-tag height above the feet, by pose. Crouch shortens the body. */
+export function labelHeightForPose(pose: "stand" | "sit" | "crouch"): number {
+  return pose === "crouch" ? 1.62 : 2.12;
+}
+
+/** Crosshair anchor height above the feet (head), by pose. */
+export function personAnchorHeightForPose(pose: "stand" | "sit" | "crouch"): number {
+  return pose === "crouch" ? 1.2 : 1.55;
+}
+
 /** Skin/shirt palette, chosen deterministically from the principal id. */
 const SHIRT_COLORS = ["#c2795c", "#587d94", "#d2ad63", "#7e779c"];
 
@@ -75,8 +88,8 @@ export interface Avatar {
   baseY: number;
   targetYaw: number;
   targetPitch: number;
-  movement: "idle" | "walk";
-  pose: "stand" | "sit";
+  movement: "idle" | "walk" | "jump";
+  pose: "stand" | "sit" | "crouch";
   /** True until the first transform, so we can place rather than glide. */
   awaitingFirstTransform: boolean;
 }
@@ -214,10 +227,47 @@ export function animateAvatar(
   // the log they are supposedly sitting on.
   const sitting = avatar.pose === "sit";
   if (sitting) {
+    avatar.group.scale.y = 1;
     avatar.limbs.forEach((limb, i) => {
       limb.rotation.x = i < 2 ? 0.15 : -1.35;
     });
     avatar.group.position.y = baseY - SIT_DROP;
+    return;
+  }
+
+  // Crouch compresses the body; jump tucks the limbs. Both are STATE, not
+  // idle animation, so they apply under reduced motion too (static there).
+  const crouching = avatar.pose === "crouch";
+  avatar.group.scale.y = crouching ? CROUCH_SCALE_Y : 1;
+  const jumping = avatar.movement === "jump";
+  if (jumping) {
+    // Tucked: arms raised, legs trailing. No bob — the `y` arc carries it.
+    avatar.limbs.forEach((limb, i) => {
+      limb.rotation.x = i < 2 ? -0.7 : 0.45;
+    });
+    avatar.group.position.y = baseY;
+    return;
+  }
+  if (crouching) {
+    if (reducedMotion) {
+      avatar.limbs.forEach((limb, i) => {
+        limb.rotation.x = i < 2 ? 0.3 : -0.95;
+      });
+      avatar.group.position.y = baseY;
+      return;
+    }
+    const walking = avatar.movement === "walk";
+    avatar.limbs.forEach((limb, i) => {
+      const base = i < 2 ? 0.3 : -0.95;
+      limb.rotation.x = walking
+        ? base + Math.sin(now * 0.009 + (i % 2) * Math.PI) * 0.25
+        : base + Math.sin(now * 0.0018 + i) * 0.015;
+    });
+    avatar.group.position.y =
+      baseY +
+      (walking
+        ? Math.abs(Math.sin(now * 0.009)) * 0.02
+        : Math.sin(now * 0.002) * 0.008);
     return;
   }
 

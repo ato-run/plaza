@@ -149,9 +149,13 @@ export interface PlaygroundTransform {
   z: number;
   yaw: number;
   pitch: number;
-  movement: "idle" | "walk";
-  /** Sitting is a World affordance (a bench, a log), not a movement. */
-  pose: "stand" | "sit";
+  movement: "idle" | "walk" | "jump";
+  /**
+   * Sitting is a World affordance (a bench, a log), not a movement.
+   * Crouching is the reporter's own posture: visual only, `y` stays
+   * stand-based so pose-unaware clients keep the right feet.
+   */
+  pose: "stand" | "sit" | "crouch";
 }
 
 /**
