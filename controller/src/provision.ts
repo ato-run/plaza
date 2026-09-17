@@ -2,11 +2,15 @@
 import { mkdir, writeFile, access } from "node:fs/promises";
 const origin = process.env.ATO_API_ORIGIN,
   instance = process.env.ATO_INSTANCE_ID,
-  cookie = process.env.ATO_OWNER_SESSION_COOKIE;
-if (!origin || !instance || !cookie)
+  cookie = process.env.ATO_OWNER_SESSION_COOKIE,
+  ownerToken = process.env.ATO_OWNER_SESSION_TOKEN;
+if (!origin || !instance || (!cookie && !ownerToken))
   throw new Error(
     "ATO_API_ORIGIN_ATO_INSTANCE_ID_ATO_OWNER_SESSION_COOKIE_required",
   );
+const bindingTtl = Number(process.env.ATO_BINDING_TTL_SECONDS ?? 3600);
+if (!Number.isInteger(bindingTtl) || bindingTtl < 60 || bindingTtl > 86400)
+  throw new Error("invalid_binding_ttl");
 const url = new URL(origin);
 if (
   url.protocol !== "https:" &&
@@ -37,7 +41,9 @@ async function post(
       ...(credential
         ? { Authorization: `Bearer ${credential}` }
         : {
-            Cookie: cookie!,
+            ...(ownerToken
+              ? { Authorization: `Bearer ${ownerToken}` }
+              : { Cookie: cookie! }),
             Origin: process.env.ATO_OWNER_ORIGIN ?? url.origin,
           }),
     },
@@ -70,7 +76,7 @@ const actor =
 if (typeof actor !== "string") throw new Error("invalid_actor_response");
 const binding = await post(
   `/v1/activities/${encodeURIComponent(activity)}/actors/${encodeURIComponent(actor)}/controller-bindings`,
-  { expires_in_seconds: 3600 },
+  { expires_in_seconds: bindingTtl },
 );
 const session = await post(
   "/v1/controller-sessions",
@@ -94,6 +100,7 @@ console.log(
     activity_id: activity,
     actor_id: actor,
     session_id: session.session.id,
+    expires_at: session.session.expires_at,
     environment_file: output,
   }),
 );

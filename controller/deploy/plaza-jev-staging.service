@@ -1,0 +1,23 @@
+[Unit]
+Description=Plaza Jev staging Controller (one delegated Actor)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/ato-plaza-jev/current/controller
+ExecStart=/usr/bin/node --env-file=%h/.config/ato/plaza-jev-staging.env --import tsx src/main.ts
+Environment=JEV_MODEL=jev-latest
+# Credentials expire independently; never restart to revive an old goal or budget.
+Restart=no
+RuntimeMaxSec=14400
+TimeoutStopSec=5
+KillMode=control-group
+NoNewPrivileges=true
+UMask=0077
+MemoryMax=256M
+CPUQuota=25%
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

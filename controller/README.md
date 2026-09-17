@@ -34,6 +34,11 @@ issue a new Session for a previously provisioned child. It creates a mode-0600
 overwrite an existing credential file. It performs no rollout or flag change.
 Owner authentication is **not** passed to the execution transport.
 
+An existing owner device Session may instead be supplied as
+`ATO_OWNER_SESSION_TOKEN`. `ATO_BINDING_TTL_SECONDS` defaults to 3,600 and
+accepts 60–86,400 seconds; the common Controller Session still caps its own
+lifetime (currently four hours). The provision receipt includes its expiry.
+
 ```sh
 # Run in controller/. Secret file paths below are operator supplied.
 node --env-file=/absolute/path/operator.env --import tsx src/provision.ts
@@ -42,6 +47,13 @@ node --env-file=/absolute/path/.dev.vars \
 ```
 
 Supervise that command with the existing deployment's process supervisor.
+`deploy/plaza-jev-staging.service` is the bounded systemd user service used
+on the existing Node 22 staging Runner host. Install code under
+`~/.local/share/ato-plaza-jev/current`, and supply only the Jev key, API origin
+and child Session token in mode-0600 `~/.config/ato/plaza-jev-staging.env`.
+The unit defaults to real Jev, stops after four hours, and does not restart
+expired Sessions or exhausted budgets. Renewal is an explicit provisioning
+operation, not an owner credential retained by the daemon.
 The daemon first registers as ready. The owner clicks **AIを参加させる** in
 Plaza after consenting, then sends **AIへ指示**. Authorized owner controls
 replace the goal in server order. Other participants can consent and observe,
