@@ -16,6 +16,7 @@ import {
 import { sanitizeTransform } from "../../src/playground/world/worldMath";
 import {
   ControllerTransport,
+  ControllerError,
   fenceKey,
   type Control,
   type Fence,
@@ -180,6 +181,22 @@ export class PlazaControllerLoop {
         latency_ms: performance.now() - start,
       });
     } catch (error) {
+      if (
+        !abort.signal.aborted &&
+        error instanceof ControllerError &&
+        error.code === "controller_decision_rate"
+      ) {
+        // Adjacent one-second heartbeats can arrive a few milliseconds apart
+        // from the previous reservation. Coalesce until the next heartbeat;
+        // no provider request was admitted, so this is not a model retry.
+        this.decidedKey = "";
+        this.diagnostic({
+          phase: "deferred",
+          reason: error.code,
+          fence: current.fence,
+        });
+        return;
+      }
       if (abort.signal.aborted) {
         this.diagnostic({
           phase: "discarded",

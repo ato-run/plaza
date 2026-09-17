@@ -1,6 +1,10 @@
 import { it, expect, vi, afterEach } from "vitest";
 import { PlazaControllerLoop } from "./loop";
-import { ControllerTransport, type Control } from "./transport";
+import {
+  ControllerTransport,
+  ControllerError,
+  type Control,
+} from "./transport";
 import type { Judgment, SystemOneProvider } from "./provider";
 import { ADAPTER_ID, WORLD } from "../../src/playground/coop/adapter";
 function fixture() {
@@ -180,13 +184,11 @@ it.each(["exit", "world-change", "stale-pose"])(
     vi.spyOn(transport, "connect").mockResolvedValue();
     const ephemeral = vi.spyOn(transport, "ephemeral").mockResolvedValue();
     vi.spyOn(transport, "reserve").mockResolvedValue(c);
-    const post = vi
-      .spyOn(transport, "post")
-      .mockResolvedValue({
-        status: "room-committed",
-        seq: 1,
-        actor_id: "actor:ai",
-      });
+    const post = vi.spyOn(transport, "post").mockResolvedValue({
+      status: "room-committed",
+      seq: 1,
+      actor_id: "actor:ai",
+    });
     const provider: SystemOneProvider = {
       decide: vi.fn(async () => ({
         candidateId: "follow_0",
@@ -215,3 +217,38 @@ it.each(["exit", "world-change", "stale-pose"])(
     expect(provider.decide).toHaveBeenCalledTimes(1);
   },
 );
+
+it("coalesces a reservation rate rejection without retrying the model or degrading", async () => {
+  const { transport, c } = fixture();
+  vi.spyOn(transport, "connect").mockResolvedValue();
+  vi.spyOn(transport, "ephemeral").mockResolvedValue();
+  const reserve = vi
+    .spyOn(transport, "reserve")
+    .mockRejectedValueOnce(new ControllerError("controller_decision_rate", 429))
+    .mockResolvedValue(c);
+  vi.spyOn(transport, "post").mockResolvedValue({
+    status: "room-committed",
+    seq: 1,
+  });
+  const degraded = vi.spyOn(transport, "degraded").mockResolvedValue();
+  const provider: SystemOneProvider = {
+    decide: vi.fn(async () => ({
+      candidateId: "wait",
+      model: "mock",
+      confidence: 1,
+      probabilities: { wait: 1 },
+      latencyMs: 1,
+      usage: { input_tokens: 0, output_tokens: 0 },
+      estimatedUsd: 0,
+    })),
+  };
+  const loop = new PlazaControllerLoop(transport, provider);
+  await loop.tick();
+  await loop.decide();
+  expect(provider.decide).not.toHaveBeenCalled();
+  expect(degraded).not.toHaveBeenCalled();
+  await loop.decide();
+  await loop.decide();
+  expect(reserve).toHaveBeenCalledTimes(2);
+  expect(provider.decide).toHaveBeenCalledTimes(1);
+});
