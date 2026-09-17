@@ -43,3 +43,36 @@ as-is and shapes its protocol to fit. World split reduces *fanout*, never
   settings. Older posts survive only in the op suffix until GC.
 - New rooms start empty. Official migration (Phase D) imports history once,
   idempotently; presence/credentials are never migrated.
+
+
+## Optional COOP Controller extension
+
+`plaza.coop@1` attaches a separate child Actor to the existing per-instance
+App Room. It is enabled only on the API's explicit validation Instance
+allowlist. A Browser Runner bridge selects the existing Runner lane; the AI
+controls are not mounted there and a transform is never sent to both lanes.
+
+The same pure `src/playground/coop/adapter.ts` supplies semantic validation to
+Plaza and the generated API adapter. Rebuild the latter with
+`node scripts/build-coop-adapter.mjs /absolute/path/to/ato-api/src/app_adapters`;
+`plaza.provenance.json` hashes every input and the bundle. Do not hand-edit it.
+
+Server-derived `actor_kind: agent` and verified actor metadata identify AI
+posts and roster entries. Presentation data cannot create that label. Existing
+account/guest events and v1 checkpoints remain readable. Compact server commit
+digests authenticate AI authorship during checkpoint/restore. Poses are never
+sealed. Epoch/actor/schema/payload-bound IDs preserve retry identity for the
+24-hour dedupe period; legacy compacted rows without actor evidence fail closed.
+
+`AppRoomTransport.prepareMutation()` freezes the ID, epoch and serialized op.
+Retry the same prepared invocation through `invoke()`; an explicit new human
+operation prepares a new ID. The Node Controller also queries a self-scoped
+receipt after ambiguous commit delivery before repeating the same invocation.
+A seq is ordered commit evidence. The two-browser acceptance checks the final
+post projection separately; ephemeral receipts never claim persistence.
+
+See [Controller operation and rollback](../controller/README.md). Start,
+consent, goal, pause/resume and end use same-origin `/__ato/app-room/coop/*`
+with the existing Instance access identity. The owner controls the AI; other
+participants control only their own observation/disclosure consent. Model keys
+and Controller Session credentials are absent from the browser artifact.

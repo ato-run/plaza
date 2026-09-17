@@ -58,7 +58,7 @@ fences the room; neither waits for Jev. Resume requires a new instruction.
   aliases on 2026-09-17 were `jev-latest` and `jev-preview`, with the tested
   response model `jev-1.13.0`. A response model ID is not assumed callable.
 - At most one inference in flight and one reservation/second; no idle calls,
-  SDK retries or provider/model fallback. Timeout is 5 seconds. One started
+  SDK retries or provider/model fallback. Timeout is 10 seconds after observed five-second provider timeouts; stop does not wait for it. One started
   session lasts at most 10 minutes with 30 calls. Node also enforces a lifetime
   30-call / USD 0.05 reserved upper budget; restarting cannot revive an old goal.
 - Each request reserves 32,768 input tokens at the verified launch price of
@@ -117,3 +117,9 @@ Official references: [Skill](https://github.com/typesafe-ai/skills/blob/main/ski
 [documentation index](https://docs.typesafe.ai/llms.txt),
 [SDK](https://github.com/typesafe-ai/typesafe-sdk-js),
 [launch pricing](https://typesafe.ai/blog/introducing-system-one-models-and-jev).
+
+The API repository's `docs/ops/plaza-jev-v0/README.md` contains the measured
+acceptance record, including failures and remaining staging gates. Set
+`PLAZA_COOP_PROVIDER=scripted` only on that local harness to test the common
+daemon without an external provider. Its separate entry refuses non-local
+origins and is never a runtime fallback for Jev.

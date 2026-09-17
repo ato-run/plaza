@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { APITimeoutError } from "@typesafe-ai/sdk";
 import { JevProvider, validateJudgment, ProviderError } from "./provider";
 import {
   SPAWN,
@@ -32,6 +33,20 @@ const response = () => ({
   usage: { input_tokens: 120, output_tokens: 8 },
 });
 describe("Jev boundary (mocked transport, not a live Jev acceptance)", () => {
+  it("distinguishes SDK timeout without retrying or exposing request bodies", async () => {
+    const provider = new JevProvider("synthetic-key", "jev-latest");
+    const call = vi
+      .spyOn(provider.client, "systemOne")
+      .mockRejectedValue(new APITimeoutError(10000));
+    await expect(
+      provider.decide(state, candidates, new AbortController().signal),
+    ).rejects.toMatchObject({ code: "provider_timeout" });
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(call.mock.calls[0][1]).toMatchObject({
+      timeout: 10000,
+      retry: { maxRetries: 0 },
+    });
+  });
   it("rejects out-of-catalog choices, non-finite and incomplete distributions", () => {
     expect(validateJudgment(response(), candidates, 12).candidateId).toBe(
       "wait",

@@ -16,6 +16,7 @@ import {
 import { sanitizeTransform } from "../../src/playground/world/worldMath";
 import {
   ControllerTransport,
+  ControllerError,
   fenceKey,
   type Control,
   type Fence,
@@ -72,6 +73,9 @@ export class PlazaControllerLoop {
       this.activeFence = null;
       this.path = [];
       this.target = null;
+      // The room freezes the shared pose when a new fence is accepted. Do not
+      // spend elapsed movement time from before that freeze on the next goal.
+      this.lastSend = Date.now();
       this.observedKey = key;
     }
   }
@@ -177,10 +181,39 @@ export class PlazaControllerLoop {
         latency_ms: performance.now() - start,
       });
     } catch (error) {
-      if (!abort.signal.aborted) {
+      if (
+        !abort.signal.aborted &&
+        error instanceof ControllerError &&
+        error.code === "controller_decision_rate"
+      ) {
+        // Adjacent one-second heartbeats can arrive a few milliseconds apart
+        // from the previous reservation. Coalesce until the next heartbeat;
+        // no provider request was admitted, so this is not a model retry.
+        this.decidedKey = "";
+        this.diagnostic({
+          phase: "deferred",
+          reason: error.code,
+          fence: current.fence,
+        });
+        return;
+      }
+      if (abort.signal.aborted) {
+        this.diagnostic({
+          phase: "discarded",
+          reason: "aborted_or_fenced",
+          actor_id: current.actor_id,
+          fence: current.fence,
+        });
+      } else {
         const reason =
           error instanceof ProviderError ? error.code : "transport_failed";
-        this.diagnostic({ phase: "failed", reason });
+        this.diagnostic({
+          phase: "failed",
+          reason,
+          provider_status:
+            error instanceof ProviderError ? error.status : undefined,
+          latency_ms: performance.now() - start,
+        });
         await this.transport.degraded(reason, current.fence).catch(() => {});
       }
       this.selected = null;
@@ -220,14 +253,19 @@ export class PlazaControllerLoop {
   async tick(now = Date.now()): Promise<void> {
     if (this.ticking) return;
     this.ticking = true;
+    const c = this.transport.control;
     try {
-      const c = this.transport.control;
       if (!c || c.status !== "running" || now >= c.deadline) return;
       await this.transport.connect();
+      if (
+        !this.transport.control ||
+        fenceKey(this.transport.control.fence) !== fenceKey(c.fence)
+      )
+        return;
       if (!this.initialized) {
         await this.transport.ephemeral("plaza.transform", this.pose, c.fence);
         this.initialized = true;
-        this.lastSend = now;
+        this.lastSend = Date.now();
         return;
       }
       // Compute only when a frame can be sent, and recheck after every await.
@@ -300,15 +338,22 @@ export class PlazaControllerLoop {
           return;
         await this.transport.ephemeral("plaza.transform", proposed, c.fence);
         this.pose = proposed;
-        this.lastSend = now;
+        // ACK can arrive well after the tick started. Counting that delay again
+        // would spend movement time twice and race the server's speed budget.
+        this.lastSend = Date.now();
       } else this.pose = before;
     } catch (error) {
+      if (
+        !c ||
+        !this.transport.control ||
+        fenceKey(c.fence) !== fenceKey(this.transport.control.fence)
+      )
+        return;
       this.selected = null;
       this.diagnostic({
         phase: "apply_failed",
         reason: error instanceof Error ? error.message : "apply_failed",
       });
-      const c = this.transport.control;
       if (c?.status === "running")
         await this.transport
           .degraded("transport_failed", c.fence)

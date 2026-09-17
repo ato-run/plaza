@@ -286,6 +286,7 @@ export class ControllerTransport {
   async degraded(
     reason:
       | "provider_unavailable"
+      | "provider_timeout"
       | "invalid_response"
       | "budget_exhausted"
       | "target_unavailable"

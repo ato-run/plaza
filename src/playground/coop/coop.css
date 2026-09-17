@@ -1,0 +1,90 @@
+.pg-coop {
+  position: absolute;
+  top: 76px;
+  right: 18px;
+  width: min(340px, calc(100vw - 36px));
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid #ffffff40;
+  border-radius: 12px;
+  background: #202726ed;
+  color: #fff;
+  font: 13px/1.5 system-ui;
+  pointer-events: auto;
+  z-index: 8;
+}
+.pg-coop summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+.pg-coop summary span {
+  float: right;
+  font-weight: 400;
+}
+.pg-coop small {
+  display: block;
+  color: #d3dad6;
+  margin: 5px 0;
+}
+.pg-coop fieldset {
+  border: 0;
+  padding: 8px 0;
+  margin: 0;
+}
+.pg-coop label {
+  display: block;
+  margin: 6px 0;
+}
+.pg-coop input[type="checkbox"] {
+  margin-right: 6px;
+}
+.pg-coop-actions {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0;
+}
+.pg-coop button {
+  border: 1px solid #ced8d1;
+  border-radius: 6px;
+  padding: 7px 12px;
+  background: #f1f6f2;
+  color: #203129;
+  cursor: pointer;
+}
+.pg-coop button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.pg-coop form input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+}
+.pg-coop details + details {
+  border-top: 1px solid #ffffff30;
+  margin-top: 12px;
+  padding-top: 10px;
+}
+.pg-coop-history {
+  padding-left: 18px;
+  max-height: 220px;
+  overflow: auto;
+}
+.pg-coop-history li {
+  padding: 7px 0;
+}
+.pg-coop-history strong,
+.pg-coop-history span {
+  display: block;
+}
+.pg-coop-history strong {
+  font-size: 11px;
+  color: #d3dad6;
+}
+.pg-coop [role="alert"] {
+  color: #ffd2bc;
+}
