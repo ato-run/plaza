@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import {
   candidatesFor,
   decisionProjection,
@@ -81,6 +82,16 @@ const percentile = (p: number) =>
 const report = {
   created_at: new Date().toISOString(),
   kind: "provider-only synthetic smoke",
+  commit: execFileSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).trim(),
+  working_tree_dirty: !!execFileSync("git", ["status", "--porcelain"], {
+    encoding: "utf8",
+  }).trim(),
+  sdk: "@typesafe-ai/sdk@0.6.0",
+  instance_id: null,
+  actor_id: null,
+  operation_id: null,
   model,
   available_models: available,
   prompt_version: PROMPT_VERSION,
