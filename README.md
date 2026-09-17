@@ -6,17 +6,22 @@ the Apache License 2.0 (see `LICENSE`).
 
 ## Status
 
-Phase A of the independence plan: extracted from `apps/ato-pwa`'s
-`src/playground` into this app with no PWA dependency. It still talks to
-the lobby backend served by `apps/ato-api` on the canonical app host
-(same-origin ` /__ato/playground/*`), so it is **not** yet backend
-self-hostable — each Instance has its own room only after the App Room
-migration (Phase B). The README will say so exactly when that lands.
+Normal Instances use their own App Room at `/__ato/app-room` for REST and
+WebSocket. Posts use the ordered `plaza.room@1` durable lane; movement and face
+reactions are ephemeral. An existing Browser Runner bridge selects the separate
+`ato.playground.world@1` adapter. The old Phase A/global lobby description no
+longer describes this code.
+
+An optional [COOP AI Controller](controller/README.md) joins that same Instance
+as its own verified Actor. It runs in Node, requires an explicit Instance
+allowlist and participant consent, and uses TypeSafe Choice over app-defined
+candidates. The feature is off by default; this source tree alone does not mean
+an artifact, Runner or flag is deployed.
 
 ## Develop
 
 ```sh
-npm install
+npm ci
 npm run dev      # http://localhost:5174
 npm test         # vitest
 npm run build    # dist/

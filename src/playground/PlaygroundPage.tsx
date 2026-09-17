@@ -1,3 +1,4 @@
+import { CoopControls } from "./coop/CoopControls";
 /**
  * Playground — one global Lobby (`global-v1`), as a first-person world.
  *
@@ -1109,6 +1110,13 @@ export default function PlaygroundPage() {
         </>
       ) : null}
 
+      {!runnerBacked && !runnerAvailableRef.current && connected ? (
+        <CoopControls
+          posts={state.order.map((id) => state.posts.get(id)!).filter(Boolean)}
+          participants={[...presence.members.values()]}
+          onFocusChange={(paused) => worldRef.current?.setPaused(paused)}
+        />
+      ) : null}
 
       <div className="pg-crosshair" aria-hidden="true">
         +
