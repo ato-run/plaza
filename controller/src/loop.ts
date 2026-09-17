@@ -207,7 +207,13 @@ export class PlazaControllerLoop {
       } else {
         const reason =
           error instanceof ProviderError ? error.code : "transport_failed";
-        this.diagnostic({ phase: "failed", reason });
+        this.diagnostic({
+          phase: "failed",
+          reason,
+          provider_status:
+            error instanceof ProviderError ? error.status : undefined,
+          latency_ms: performance.now() - start,
+        });
         await this.transport.degraded(reason, current.fence).catch(() => {});
       }
       this.selected = null;

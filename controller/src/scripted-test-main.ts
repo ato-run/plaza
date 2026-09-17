@@ -25,7 +25,7 @@ await runController(
             (action === "wait" ||
               (!!c.target && c.description.includes("指示者"))),
         ) ?? candidates.find((c) => c.id === "clarify")!;
-      await new Promise((resolve) => setTimeout(resolve, 600));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
       signal.throwIfAborted();
       return {
         candidateId: chosen.id,
@@ -34,7 +34,7 @@ await runController(
         probabilities: Object.fromEntries(
           candidates.map((c) => [c.id, c.id === chosen.id ? 1 : 0]),
         ),
-        latencyMs: 600,
+      latencyMs: 2000,
         usage: { input_tokens: 0, output_tokens: 0 },
         estimatedUsd: 0,
       };

@@ -12,12 +12,16 @@ if (!key || !token || !origin)
 const provider = new JevProvider(key, process.env.JEV_MODEL ?? "jev-latest");
 const modelReady = provider.verifyModel().then(
   () => null,
-  () => "provider_unavailable" as const,
+  (error) =>
+    error instanceof ProviderError
+      ? error
+      : new ProviderError("provider_unavailable"),
 );
 const transport = new ControllerTransport(origin, token);
 await runController(transport, {
   async decide(state, candidates, signal) {
-    if (await modelReady) throw new ProviderError("provider_unavailable");
+    const unavailable = await modelReady;
+    if (unavailable) throw unavailable;
     return provider.decide(state, candidates, signal);
   },
 });

@@ -1,4 +1,9 @@
-import { choice, TypeSafeClient, type EntryType } from "@typesafe-ai/sdk";
+import {
+  choice,
+  TypeSafeClient,
+  APITimeoutError,
+  type EntryType,
+} from "@typesafe-ai/sdk";
 import type { Candidate } from "../../src/playground/coop/adapter";
 
 export const PROMPT_VERSION = "plaza.choice@2";
@@ -27,12 +32,27 @@ export class ProviderError extends Error {
   constructor(
     readonly code:
       | "provider_unavailable"
+      | "provider_timeout"
       | "invalid_response"
       | "budget_exhausted",
     readonly status?: number,
   ) {
     super(code);
   }
+}
+function safeProviderError(error: unknown): ProviderError {
+  const status = (error as { status?: unknown } | null)?.status;
+  return new ProviderError(
+    error instanceof APITimeoutError
+      ? "provider_timeout"
+      : "provider_unavailable",
+    typeof status === "number" &&
+      Number.isInteger(status) &&
+      status >= 100 &&
+      status < 600
+      ? status
+      : undefined,
+  );
 }
 const record = (v: unknown): Record<string, unknown> | null =>
   v !== null && typeof v === "object" && !Array.isArray(v)
@@ -133,8 +153,8 @@ export class JevProvider implements SystemOneProvider {
   async verifyModel(): Promise<string[]> {
     const models = await this.client.models
       .list({ timeout: this.timeoutMs, retry: { maxRetries: 0 } })
-      .catch(() => {
-        throw new ProviderError("provider_unavailable");
+      .catch((error) => {
+        throw safeProviderError(error);
       });
     const names = models.map((m) => m.name);
     if (!names.includes(this.model))
@@ -203,11 +223,7 @@ export class JevProvider implements SystemOneProvider {
       if (signal.aborted) throw signal.reason;
       if (error instanceof ProviderError) throw error;
       // Never propagate the SDK's request/response body to logging.
-      const status =
-        typeof (error as { status?: unknown }).status === "number"
-          ? (error as { status: number }).status
-          : undefined;
-      throw new ProviderError("provider_unavailable", status);
+      throw safeProviderError(error);
     } finally {
       this.inflight = false;
     }

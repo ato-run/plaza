@@ -65,7 +65,14 @@ for (const [instruction, expected] of judgmentCases.slice(
   } catch (error) {
     const reason =
       error instanceof ProviderError ? error.code : "request_failed";
-    results.push({ instruction, expected, status: "BLOCKED", reason });
+    results.push({
+      instruction,
+      expected,
+      status: "BLOCKED",
+      reason,
+      provider_status:
+        error instanceof ProviderError ? error.status : undefined,
+    });
     console.log(
       JSON.stringify({ case: results.length, status: "BLOCKED", reason }),
     );
