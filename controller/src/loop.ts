@@ -177,7 +177,14 @@ export class PlazaControllerLoop {
         latency_ms: performance.now() - start,
       });
     } catch (error) {
-      if (!abort.signal.aborted) {
+      if (abort.signal.aborted) {
+        this.diagnostic({
+          phase: "discarded",
+          reason: "aborted_or_fenced",
+          actor_id: current.actor_id,
+          fence: current.fence,
+        });
+      } else {
         const reason =
           error instanceof ProviderError ? error.code : "transport_failed";
         this.diagnostic({ phase: "failed", reason });
