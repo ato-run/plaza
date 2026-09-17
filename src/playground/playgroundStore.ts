@@ -66,7 +66,11 @@ function postFromEventPayload(payload: unknown): PlaygroundPost | null {
   const world = raw.world;
   return {
     id: raw.id,
-    author_user_id: typeof raw.author_user_id === "string" ? raw.author_user_id : "",
+    author_actor: raw.author_actor as
+      | import("./types").VerifiedActorMetadata
+      | undefined,
+    author_user_id:
+      typeof raw.author_user_id === "string" ? raw.author_user_id : "",
     kind: (raw.kind as PlaygroundPost["kind"]) ?? "text",
     text: typeof raw.text === "string" ? raw.text : null,
     app_ref:
@@ -233,11 +237,17 @@ export function applyEventsPage(
   return next;
 }
 
-export function setOnline(state: PlaygroundState, online: number): PlaygroundState {
+export function setOnline(
+  state: PlaygroundState,
+  online: number,
+): PlaygroundState {
   return { ...state, online };
 }
 
-export function mute(state: PlaygroundState, mutedUserId: string): PlaygroundState {
+export function mute(
+  state: PlaygroundState,
+  mutedUserId: string,
+): PlaygroundState {
   const mutedUserIds = new Set(state.mutedUserIds);
   mutedUserIds.add(mutedUserId);
   return { ...state, mutedUserIds };
@@ -257,7 +267,10 @@ export function unmute(
  * lost LAST broadcast is otherwise invisible — there is no later message to
  * notice the gap with.
  */
-export function isBehind(state: PlaygroundState, highWaterCursor: number): boolean {
+export function isBehind(
+  state: PlaygroundState,
+  highWaterCursor: number,
+): boolean {
   return highWaterCursor > state.cursor;
 }
 

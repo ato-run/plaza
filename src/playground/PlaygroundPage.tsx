@@ -67,7 +67,13 @@ import {
   type PlaygroundFaceReaction,
   type PlaygroundWorldOnline,
 } from "./types";
-import { startWorld, type ExhibitCard, type WorldHandle, type WorldTarget, type WorldTransformReport } from "./world/world";
+import {
+  startWorld,
+  type ExhibitCard,
+  type WorldHandle,
+  type WorldTarget,
+  type WorldTransformReport,
+} from "./world/world";
 import { WORLDS } from "./world/worlds";
 import { DEFAULT_WORLD_ID, type WorldId } from "./world/types";
 import { ATO_BROWSER_BRIDGE_READY_EVENT } from "../shared/runnerProtocol";
@@ -173,11 +179,15 @@ export default function PlaygroundPage() {
   const runnerBackedRef = useRef(false);
   const runnerAvailableRef = useRef(false);
   const runnerMembersRef = useRef<Set<string>>(new Set());
-  const runnerActorBySocialPrincipalRef = useRef<Map<string, string>>(new Map());
+  const runnerActorBySocialPrincipalRef = useRef<Map<string, string>>(
+    new Map(),
+  );
   const runnerReactionRevisionRef = useRef(0);
   const runnerPresentationRef = useRef("");
   const pendingRunnerSnapshotWorldRef = useRef<WorldId | null>(null);
-  const runnerSnapshotRequestRef = useRef<(worldId: WorldId) => void>(() => undefined);
+  const runnerSnapshotRequestRef = useRef<(worldId: WorldId) => void>(
+    () => undefined,
+  );
   const runnerDispatchRef = useRef<
     (protocolId: string, kind: string, payload: { type: string }) => boolean
   >(() => false);
@@ -206,7 +216,10 @@ export default function PlaygroundPage() {
           let next = current;
           if (projection.remove_actor_id) {
             runnerMembersRef.current.delete(projection.remove_actor_id);
-            for (const [principalId, actorId] of runnerActorBySocialPrincipalRef.current) {
+            for (const [
+              principalId,
+              actorId,
+            ] of runnerActorBySocialPrincipalRef.current) {
               if (actorId === projection.remove_actor_id) {
                 runnerActorBySocialPrincipalRef.current.delete(principalId);
               }
@@ -506,7 +519,10 @@ export default function PlaygroundPage() {
         ...current,
         cards: {
           apps: { ...current.cards.apps, ...(cards.apps ?? {}) },
-          activities: { ...current.cards.activities, ...(cards.activities ?? {}) },
+          activities: {
+            ...current.cards.activities,
+            ...(cards.activities ?? {}),
+          },
         },
       }));
     } catch {
@@ -554,11 +570,22 @@ export default function PlaygroundPage() {
       participant: AppRoomParticipant,
     ): PlaygroundParticipant => ({
       principal_id: participant.principal_id,
-      display_name: participant.display_name,
+      display_name: participant.actor
+        ? `${participant.actor.display_name} · AI`
+        : participant.display_name,
+      actor: participant.actor,
       animal_emoji: participant.animal_emoji,
       is_guest: participant.principal_id.startsWith("guest:"),
       world_id: worldOfParticipant(participant, worldIdRef.current),
       typing: participant.typing,
+      transform:
+        participant.ephemeral?.kind === PLAZA_EPHEMERAL_TRANSFORM_KIND
+          ? {
+              ...(participant.ephemeral
+                .payload as import("./types").PlaygroundTransform),
+              world_id: worldOfParticipant(participant, worldIdRef.current),
+            }
+          : null,
     });
     const worldOnlineOf = (
       participants: readonly AppRoomParticipant[],
@@ -582,6 +609,11 @@ export default function PlaygroundPage() {
           case "hello":
             helloRef.current = message;
             setConnected(true);
+            if (!runnerAvailableRef.current)
+              setPresence((current) => ({
+                ...current,
+                self: toParticipant(message.self),
+              }));
             setState((current) => ({
               ...current,
               viewer: viewerFromHello(message),
@@ -605,7 +637,12 @@ export default function PlaygroundPage() {
           case "join":
             if (runnerAvailableRef.current) break;
             setPresence((current) =>
-              applyJoin(current, toParticipant(message.participant), message.online, now),
+              applyJoin(
+                current,
+                toParticipant(message.participant),
+                message.online,
+                now,
+              ),
             );
             setState((current) => setOnline(current, message.online));
             break;
@@ -619,12 +656,19 @@ export default function PlaygroundPage() {
           case "presence":
             if (runnerAvailableRef.current) break;
             setPresence((current) =>
-              applyTyping(current, message.principal_id, message.payload.typing ?? false),
+              applyTyping(
+                current,
+                message.principal_id,
+                message.payload.typing ?? false,
+              ),
             );
             break;
           case "ephemeral": {
             if (runnerAvailableRef.current) break;
-            const payload = message.ephemeral.payload as Record<string, unknown>;
+            const payload = message.ephemeral.payload as Record<
+              string,
+              unknown
+            >;
             if (message.ephemeral.kind === PLAZA_EPHEMERAL_TRANSFORM_KIND) {
               setPresence((current) =>
                 applyTransform(current, message.principal_id, payload, now),
@@ -633,7 +677,9 @@ export default function PlaygroundPage() {
               message.ephemeral.kind === PLAZA_EPHEMERAL_FACE_REACTION_KIND &&
               typeof payload.target_principal_id === "string" &&
               typeof payload.emoji === "string" &&
-              (PLAYGROUND_FACE_REACTIONS as readonly string[]).includes(payload.emoji)
+              (PLAYGROUND_FACE_REACTIONS as readonly string[]).includes(
+                payload.emoji,
+              )
             ) {
               setPresence((current) =>
                 applyFaceReaction(
@@ -668,10 +714,10 @@ export default function PlaygroundPage() {
                   applySpeech(
                     current,
                     runnerAvailableRef.current
-                      ? runnerActorBySocialPrincipalRef.current.get(
+                      ? (runnerActorBySocialPrincipalRef.current.get(
                           principalIdForAuthor(message.event.actor_id),
-                        ) ?? principalIdForAuthor(message.event.actor_id)
-                      : principalIdForAuthor(message.event.actor_id),
+                        ) ?? principalIdForAuthor(message.event.actor_id))
+                      : message.event.actor_id,
                     payload.text as string,
                     now,
                   ),
@@ -1062,6 +1108,7 @@ export default function PlaygroundPage() {
           </div>
         </>
       ) : null}
+
 
       <div className="pg-crosshair" aria-hidden="true">
         +

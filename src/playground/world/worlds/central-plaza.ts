@@ -13,7 +13,16 @@
  */
 import * as THREE from "three";
 
-import { circle, type Collider } from "../collision";
+import {
+  CENTRAL_SOFTWARE_SLOTS,
+  centralColliders,
+  FOUNTAIN_RADIUS,
+  CENTRAL_TREES,
+  CENTRAL_PLANTERS,
+  CENTRAL_BENCHES,
+  CENTRAL_LANTERNS,
+  CENTRAL_MASCOTS,
+} from "./centralGeometry";
 import { bench, lantern, planter, tree } from "../primitives";
 import {
   animateMascot,
@@ -24,8 +33,6 @@ import {
   type Mascot,
 } from "../mascot";
 import type { Interactable, WorldDefinition, WorldRuntime } from "../types";
-
-const FOUNTAIN_RADIUS = 3.2;
 
 export const centralPlaza: WorldDefinition = {
   id: "central-plaza",
@@ -42,7 +49,7 @@ export const centralPlaza: WorldDefinition = {
   available: true,
 
   build({ builder, labelHost, reducedMotion }): WorldRuntime {
-    const colliders: Collider[] = [];
+    const colliders = centralColliders();
     const interactables: Interactable[] = [];
     const mascots: Mascot[] = [];
 
@@ -125,70 +132,29 @@ export const centralPlaza: WorldDefinition = {
     );
     builder.track(droplets);
 
-    colliders.push(circle(0, 0, FOUNTAIN_RADIUS + 0.1));
-
     // ---- planting and furniture -----------------------------------------
-    (
-      [
-        [-9, -7, 1.3],
-        [10, -9, 1.4],
-        [-13, 2, 1.3],
-        [13, 4, 1.5],
-        [-7, -16, 1.7],
-        [6, -18, 1.5],
-        [-18, -10, 1.8],
-        [18, -13, 1.7],
-        [-17, 13, 1.4],
-        [17, 16, 1.3],
-        [-3, 21, 1.4],
-      ] as const
-    ).forEach(([x, z, scale]) => {
+    CENTRAL_TREES.forEach(([x, z, scale]) => {
       tree(builder, x, z, scale);
-      colliders.push(circle(x, z, 0.5));
     });
 
-    for (const [x, z] of [
-      [-9.5, 4],
-      [9.5, 4],
-      [0, 13],
-    ] as const) {
+    for (const [x, z] of CENTRAL_PLANTERS) {
       planter(builder, x, z);
-      colliders.push(circle(x, z, 1.6));
     }
 
     // Benches face the fountain: a ring of seats around a middle is what
     // makes a square somewhere to wait rather than somewhere to cross.
-    for (const [x, z, rotation] of [
-      [0, 6.6, Math.PI],
-      [6.6, 0, -Math.PI / 2],
-      [-6.6, 0, Math.PI / 2],
-      [0, -6.6, 0],
-    ] as const) {
+    for (const [x, z, rotation] of CENTRAL_BENCHES) {
       bench(builder, x, z, rotation);
-      colliders.push(circle(x, z, 1.5));
     }
 
-    for (const [x, z] of [
-      [-9, 9],
-      [9, 9],
-      [-9, -9],
-      [9, -9],
-      [0, 17],
-    ] as const) {
+    for (const [x, z] of CENTRAL_LANTERNS) {
       lantern(builder, x, z);
-      colliders.push(circle(x, z, 0.3));
     }
 
     // ---- mascots ---------------------------------------------------------
-    const specs = [
-      { id: "cat", name: "ミケ", species: "cat" as const, x: -5.4, z: 4.6, yaw: 2.4 },
-      { id: "dog", name: "ソラ", species: "dog" as const, x: 3.9, z: 4.2, yaw: -2.6 },
-      { id: "panda", name: "モモ", species: "panda" as const, x: -2.2, z: -9.4, yaw: 0.4 },
-    ];
-    for (const spec of specs) {
+    for (const spec of CENTRAL_MASCOTS) {
       const mascot = createMascot(builder, labelHost, spec);
       mascots.push(mascot);
-      colliders.push(circle(spec.x, spec.z, 0.45));
       interactables.push({
         kind: "mascot",
         id: mascot.id,
@@ -204,13 +170,7 @@ export const centralPlaza: WorldDefinition = {
 
       // North edge, facing back into the plaza, so the fountain keeps the
       // middle and the boards are still the first thing beyond it.
-      softwareSlots: [
-        { id: "plaza-01", x: -6.4, z: -12.6 },
-        { id: "plaza-02", x: 0, z: -13.4 },
-        { id: "plaza-03", x: 6.4, z: -12.6 },
-        { id: "plaza-04", x: -12.4, z: -8.2, rotation: 0.6 },
-        { id: "plaza-05", x: 12.4, z: -8.2, rotation: -0.6 },
-      ],
+      softwareSlots: CENTRAL_SOFTWARE_SLOTS,
 
       update(_dt, now) {
         for (const mascot of mascots) {

@@ -48,7 +48,14 @@ export interface PlaygroundViewer {
  * card lives in the bootstrap's `cards` map, re-read by the server at render
  * time so an App that stops being public stops advertising itself.
  */
+export interface VerifiedActorMetadata {
+  kind: "ai";
+  display_name: string;
+  started_by: { display_name: string; animal_emoji: string };
+}
+
 export interface PlaygroundPost {
+  author_actor?: VerifiedActorMetadata;
   id: string;
   author_user_id: string;
   kind: PlaygroundPostKind;
@@ -195,6 +202,7 @@ export const PLAYGROUND_FACE_REACTIONS: readonly PlaygroundFaceReaction[] = [
 
 /** A participant as broadcast by the room. */
 export interface PlaygroundParticipant {
+  actor?: VerifiedActorMetadata;
   principal_id: string;
   display_name: string;
   animal_emoji: string;
