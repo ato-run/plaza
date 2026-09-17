@@ -37,13 +37,13 @@ describe("Jev boundary (mocked transport, not a live Jev acceptance)", () => {
     const provider = new JevProvider("synthetic-key", "jev-latest");
     const call = vi
       .spyOn(provider.client, "systemOne")
-      .mockRejectedValue(new APITimeoutError(5000));
+      .mockRejectedValue(new APITimeoutError(10000));
     await expect(
       provider.decide(state, candidates, new AbortController().signal),
     ).rejects.toMatchObject({ code: "provider_timeout" });
     expect(call).toHaveBeenCalledTimes(1);
     expect(call.mock.calls[0][1]).toMatchObject({
-      timeout: 5000,
+      timeout: 10000,
       retry: { maxRetries: 0 },
     });
   });

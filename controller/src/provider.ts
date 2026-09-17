@@ -132,7 +132,7 @@ export class JevProvider implements SystemOneProvider {
     readonly model: string,
     private readonly maxCalls = 30,
     private readonly maxUsd = 0.05,
-    private readonly timeoutMs = 5000,
+    private readonly timeoutMs = 10000,
   ) {
     if (
       !apiKey ||
