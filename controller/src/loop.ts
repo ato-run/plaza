@@ -72,6 +72,9 @@ export class PlazaControllerLoop {
       this.activeFence = null;
       this.path = [];
       this.target = null;
+      // The room freezes the shared pose when a new fence is accepted. Do not
+      // spend elapsed movement time from before that freeze on the next goal.
+      this.lastSend = Date.now();
       this.observedKey = key;
     }
   }
@@ -227,14 +230,19 @@ export class PlazaControllerLoop {
   async tick(now = Date.now()): Promise<void> {
     if (this.ticking) return;
     this.ticking = true;
+    const c = this.transport.control;
     try {
-      const c = this.transport.control;
       if (!c || c.status !== "running" || now >= c.deadline) return;
       await this.transport.connect();
+      if (
+        !this.transport.control ||
+        fenceKey(this.transport.control.fence) !== fenceKey(c.fence)
+      )
+        return;
       if (!this.initialized) {
         await this.transport.ephemeral("plaza.transform", this.pose, c.fence);
         this.initialized = true;
-        this.lastSend = now;
+        this.lastSend = Date.now();
         return;
       }
       // Compute only when a frame can be sent, and recheck after every await.
@@ -307,15 +315,22 @@ export class PlazaControllerLoop {
           return;
         await this.transport.ephemeral("plaza.transform", proposed, c.fence);
         this.pose = proposed;
-        this.lastSend = now;
+        // ACK can arrive well after the tick started. Counting that delay again
+        // would spend movement time twice and race the server's speed budget.
+        this.lastSend = Date.now();
       } else this.pose = before;
     } catch (error) {
+      if (
+        !c ||
+        !this.transport.control ||
+        fenceKey(c.fence) !== fenceKey(this.transport.control.fence)
+      )
+        return;
       this.selected = null;
       this.diagnostic({
         phase: "apply_failed",
         reason: error instanceof Error ? error.message : "apply_failed",
       });
-      const c = this.transport.control;
       if (c?.status === "running")
         await this.transport
           .degraded("transport_failed", c.fence)
