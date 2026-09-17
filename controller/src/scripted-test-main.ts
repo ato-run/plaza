@@ -22,7 +22,8 @@ await runController(
         candidates.find(
           (c) =>
             c.action === action &&
-            (!c.target || c.description.includes("指示者")),
+            (action === "wait" ||
+              (!!c.target && c.description.includes("指示者"))),
         ) ?? candidates.find((c) => c.id === "clarify")!;
       await new Promise((resolve) => setTimeout(resolve, 600));
       signal.throwIfAborted();
