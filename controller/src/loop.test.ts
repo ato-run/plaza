@@ -154,3 +154,64 @@ it("paces movement from the applied ACK and ignores errors from a replaced goal"
   expect(ephemeral).toHaveBeenCalledTimes(2);
   expect(degraded).not.toHaveBeenCalled();
 });
+
+it.each(["exit", "world-change", "stale-pose"])(
+  "waits when a followed target becomes unavailable: %s",
+  async (reason) => {
+    const { transport, c } = fixture();
+    c.peers = [
+      {
+        principal_id: "a",
+        display_name: "A",
+        scope: WORLD,
+        pose: {
+          x: 2,
+          y: 1.65,
+          z: 18,
+          yaw: 0,
+          pitch: 0,
+          pose: "stand",
+          movement: "idle",
+        },
+        observed_at: Date.now(),
+        consent: true,
+      },
+    ];
+    vi.spyOn(transport, "connect").mockResolvedValue();
+    const ephemeral = vi.spyOn(transport, "ephemeral").mockResolvedValue();
+    vi.spyOn(transport, "reserve").mockResolvedValue(c);
+    const post = vi
+      .spyOn(transport, "post")
+      .mockResolvedValue({
+        status: "room-committed",
+        seq: 1,
+        actor_id: "actor:ai",
+      });
+    const provider: SystemOneProvider = {
+      decide: vi.fn(async () => ({
+        candidateId: "follow_0",
+        model: "mock",
+        confidence: 1,
+        probabilities: { follow_0: 1 },
+        latencyMs: 1,
+        usage: { input_tokens: 0, output_tokens: 0 },
+        estimatedUsd: 0,
+      })),
+    };
+    const loop = new PlazaControllerLoop(transport, provider);
+    await loop.tick();
+    await loop.decide();
+    if (reason === "exit") c.peers = [];
+    else if (reason === "world-change") c.peers[0].scope = "market";
+    else c.peers[0].observed_at -= 2000;
+    await loop.tick(Date.now() + 1100);
+    expect(ephemeral.mock.calls.at(-1)?.[1]).toMatchObject({
+      movement: "idle",
+    });
+    expect(post.mock.calls.at(-1)?.[1]).toMatchObject({
+      post: { text: "対象を見つけられないので、ここで待ちます。" },
+    });
+    await loop.decide();
+    expect(provider.decide).toHaveBeenCalledTimes(1);
+  },
+);
