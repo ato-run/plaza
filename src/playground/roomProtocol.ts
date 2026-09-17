@@ -1,3 +1,4 @@
+import { validateDurable } from "./coop/adapter";
 /**
  * Plaza over an App Room (per-instance shared-state lane).
  *
@@ -26,11 +27,7 @@ import {
   createPlaygroundState,
   type PlaygroundState,
 } from "./playgroundStore";
-import {
-  DEFAULT_WORLD_ID,
-  isWorldId,
-  type WorldId,
-} from "./world/types";
+import { DEFAULT_WORLD_ID, isWorldId, type WorldId } from "./world/types";
 import type {
   PlaygroundBootstrap,
   PlaygroundEvent,
@@ -80,7 +77,8 @@ export interface AppRoomOpEvent {
   seq: number;
   operation_id: string;
   actor_id: string;
-  actor_kind: "account" | "guest";
+  actor_kind: "account" | "guest" | "agent";
+  actor?: import("./types").VerifiedActorMetadata;
   state_schema_id: string;
   room_epoch: number;
   op: unknown;
@@ -114,6 +112,7 @@ export interface AppRoomEventsPage {
 }
 
 export interface AppRoomParticipant {
+  actor?: import("./types").VerifiedActorMetadata;
   principal_id: string;
   display_name: string;
   animal_emoji: string;
@@ -203,6 +202,17 @@ export function roomOpToEvent(
     room_id: "room",
     created_at: new Date().toISOString(),
   };
+  if (
+    event.actor_kind === "agent" &&
+    validateDurable(event.op, {
+      actor: true,
+      principalId: event.actor_id,
+      operationId: event.operation_id,
+      now: Date.now(),
+      peers: [],
+    })
+  )
+    return noopEvent(event.seq, event.operation_id);
   if (!isPlazaOp(event.op)) return noopEvent(event.seq, event.operation_id);
   switch (event.op.t) {
     case "post": {
@@ -223,6 +233,9 @@ export function roomOpToEvent(
         payload: {
           id: post.id,
           author_user_id: event.actor_id,
+          ...(event.actor_kind === "agent" && event.actor
+            ? { author_actor: event.actor }
+            : {}),
           kind: "text",
           text: post.text,
           public_app_ref: post.app_ref ?? null,
@@ -300,13 +313,22 @@ function postFromMapped(event: PlaygroundEvent): PlaygroundPost | null {
   const world = raw.world;
   return {
     id: raw.id,
-    author_user_id: typeof raw.author_user_id === "string" ? raw.author_user_id : "",
+    author_actor: raw.author_actor as
+      | import("./types").VerifiedActorMetadata
+      | undefined,
+    author_user_id:
+      typeof raw.author_user_id === "string" ? raw.author_user_id : "",
     kind: "text",
     text: typeof raw.text === "string" ? raw.text : null,
     app_ref: typeof raw.public_app_ref === "string" ? raw.public_app_ref : null,
     activity_ref:
-      typeof raw.public_activity_ref === "string" ? raw.public_activity_ref : null,
-    created_at: typeof raw.created_at === "string" ? raw.created_at : new Date().toISOString(),
+      typeof raw.public_activity_ref === "string"
+        ? raw.public_activity_ref
+        : null,
+    created_at:
+      typeof raw.created_at === "string"
+        ? raw.created_at
+        : new Date().toISOString(),
     reactions: {},
     viewer_reactions: [],
     world: isWorldId(world) ? world : null,
@@ -330,7 +352,9 @@ export function buildSealPayload(state: PlaygroundState): PlazaSealPayload {
 function isSealPayload(value: unknown): value is PlazaSealPayload {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const seal = value as Record<string, unknown>;
-  return seal.v === 1 && Array.isArray(seal.posts) && typeof seal.cursor === "number";
+  return (
+    seal.v === 1 && Array.isArray(seal.posts) && typeof seal.cursor === "number"
+  );
 }
 
 /**

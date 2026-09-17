@@ -42,7 +42,7 @@ export interface Exhibit {
 }
 
 /** The radius an exhibit blocks, so nobody walks through a plinth. */
-export const EXHIBIT_OBSTACLE_RADIUS = 1.8;
+export { EXHIBIT_OBSTACLE_RADIUS } from "./worlds/centralGeometry";
 
 function boardTexture(card: ExhibitCard, index: number): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");

@@ -46,10 +46,24 @@ export type AppRoomMessage =
   | {
       kind: "ephemeral";
       principal_id: string;
-      ephemeral: { kind: string; scope: string | null; payload: unknown; expires_at: number };
+      ephemeral: {
+        kind: string;
+        scope: string | null;
+        payload: unknown;
+        expires_at: number;
+      };
     }
-  | { kind: "event"; cursor: number; event: import("./roomProtocol").AppRoomOpEvent }
-  | { kind: "sync"; room_epoch: number; high_water_cursor: number; min_available_cursor: number }
+  | {
+      kind: "event";
+      cursor: number;
+      event: import("./roomProtocol").AppRoomOpEvent;
+    }
+  | {
+      kind: "sync";
+      room_epoch: number;
+      high_water_cursor: number;
+      min_available_cursor: number;
+    }
   | { kind: "checkpoint_requested" }
   | { kind: "reset"; room_epoch: number };
 
@@ -107,20 +121,35 @@ export class AppRoomTransport {
   }
 
   events(after: number): Promise<AppRoomEventsPage> {
-    return request<AppRoomEventsPage>(`/events?after=${encodeURIComponent(String(after))}`);
+    return request<AppRoomEventsPage>(
+      `/events?after=${encodeURIComponent(String(after))}`,
+    );
   }
 
-  mutate(op: PlazaOp): Promise<{ seq: number; replay: boolean }> {
-    return request<{ seq: number; replay: boolean }>("/mutate", {
-      method: "POST",
+  /** Prepare once, retry the same bytes. Explicit new user operations get new IDs. */
+  prepareMutation(
+    op: PlazaOp,
+    operationId = crypto.randomUUID(),
+  ): Readonly<{ body: string }> {
+    return Object.freeze({
       body: JSON.stringify({
         protocol: APP_ROOM_PROTOCOL,
-        operation_id: crypto.randomUUID(),
+        operation_id: operationId,
         room_epoch: this.roomEpoch,
         state_schema_id: PLAZA_ROOM_SCHEMA_ID,
         op,
       }),
     });
+  }
+
+  invoke(
+    invocation: Readonly<{ body: string }>,
+  ): Promise<{ seq: number; replay: boolean }> {
+    return request("/mutate", { method: "POST", body: invocation.body });
+  }
+
+  mutate(op: PlazaOp): Promise<{ seq: number; replay: boolean }> {
+    return this.invoke(this.prepareMutation(op));
   }
 
   seal(
@@ -183,7 +212,13 @@ export class AppRoomTransport {
     payload: unknown,
     ttlMs?: number,
   ): void {
-    this.send({ type: "ephemeral", kind, scope, payload, ttl_ms: ttlMs ?? null });
+    this.send({
+      type: "ephemeral",
+      kind,
+      scope,
+      payload,
+      ttl_ms: ttlMs ?? null,
+    });
   }
 
   requestSync(): void {
@@ -206,16 +241,17 @@ export class AppRoomTransport {
 
   private clearPendingReconnect(): void {
     if (this.reconnectHandle === null) return;
-    const clear = this.options.clearTimeoutFn ?? ((h: number) => clearTimeout(h));
+    const clear =
+      this.options.clearTimeoutFn ?? ((h: number) => clearTimeout(h));
     clear(this.reconnectHandle);
     this.reconnectHandle = null;
   }
 
   private scheduleReconnect(): void {
     if (this.intentionallyClosed || this.reconnectHandle !== null) return;
-    const delay = (this.options.backoffMs ?? ((a: number) => this.defaultBackoff(a)))(
-      this.attempt,
-    );
+    const delay = (
+      this.options.backoffMs ?? ((a: number) => this.defaultBackoff(a))
+    )(this.attempt);
     this.attempt += 1;
     const schedule =
       this.options.setTimeoutFn ??

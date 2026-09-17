@@ -202,7 +202,10 @@ describe("event payloads use the raw column names", () => {
     // Somebody else's reaction must not appear as the viewer's own.
     expect(visiblePosts(state)[0].viewer_reactions).toEqual(["❤️"]);
 
-    state = bufferEvent(state, reactionEvent(44, "reaction.removed", "usr_alice"));
+    state = bufferEvent(
+      state,
+      reactionEvent(44, "reaction.removed", "usr_alice"),
+    );
     expect(visiblePosts(state)[0].reactions["❤️"]).toBe(3);
     // The viewer's own removal clears their mark.
     expect(visiblePosts(state)[0].viewer_reactions).toEqual([]);
@@ -211,7 +214,10 @@ describe("event payloads use the raw column names", () => {
   it("drops a reaction key entirely once its count reaches zero", () => {
     let state = applyBootstrap(createPlaygroundState(), BOOTSTRAP_POPULATED);
     for (const seq of [43, 44, 45]) {
-      state = bufferEvent(state, reactionEvent(seq, "reaction.removed", `usr_${seq}`));
+      state = bufferEvent(
+        state,
+        reactionEvent(seq, "reaction.removed", `usr_${seq}`),
+      );
     }
     expect(visiblePosts(state)[0].reactions["❤️"]).toBeUndefined();
   });
@@ -314,6 +320,26 @@ describe("presence lane envelopes", () => {
 });
 
 describe("the socket sends what the room expects", () => {
+  it("freezes a retryable invocation before pose/epoch or caller payload changes", () => {
+    const transport = new AppRoomTransport({ onMessage() {} });
+    transport.roomEpoch = 7;
+    const op = { t: "post.deleted" as const, post_id: "original" };
+    const prepared = transport.prepareMutation(
+      op,
+      "81f27b27-6040-4d47-aa2b-e76a98f7e59e",
+    );
+    op.post_id = "changed";
+    transport.roomEpoch = 8;
+    expect(JSON.parse(prepared.body)).toMatchObject({
+      room_epoch: 7,
+      op: { post_id: "original" },
+      operation_id: "81f27b27-6040-4d47-aa2b-e76a98f7e59e",
+    });
+    expect(Object.isFrozen(prepared)).toBe(true);
+    expect(transport.prepareMutation(op).body).not.toBe(
+      transport.prepareMutation(op).body,
+    );
+  });
   it("sends scoped transforms and reactions in the agreed shape", () => {
     const sent: unknown[] = [];
     const socket = {
