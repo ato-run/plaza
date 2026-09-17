@@ -117,3 +117,9 @@ Official references: [Skill](https://github.com/typesafe-ai/skills/blob/main/ski
 [documentation index](https://docs.typesafe.ai/llms.txt),
 [SDK](https://github.com/typesafe-ai/typesafe-sdk-js),
 [launch pricing](https://typesafe.ai/blog/introducing-system-one-models-and-jev).
+
+The API repository's `docs/ops/plaza-jev-v0/README.md` contains the measured
+acceptance record, including failures and remaining staging gates. Set
+`PLAZA_COOP_PROVIDER=scripted` only on that local harness to test the common
+daemon without an external provider. Its separate entry refuses non-local
+origins and is never a runtime fallback for Jev.
