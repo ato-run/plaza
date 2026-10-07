@@ -1212,9 +1212,7 @@ export default function PlaygroundPage() {
         </div>
       ) : null}
 
-      {/* Mascots get no prompt: they are scenery you can still pet with E,
-          not something the HUD should keep pointing at. */}
-      {target && target.kind !== "mascot" && !chatting ? (
+      {target && !chatting ? (
         <div className="pg-interaction">
           <span className="pg-interaction-kind">{targetKindLabel(target)}</span>
           <strong>{targetTitle(target)}</strong>

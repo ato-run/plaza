@@ -148,14 +148,6 @@
   white-space: nowrap;
 }
 
-/* A guide's tag reads differently from a person's: same shape, quieter, so a
-   mascot is not mistaken for somebody who will answer. */
-.pg-nametag--mascot {
-  background: rgba(255, 255, 255, 0.72);
-  color: #52685c;
-  font-style: italic;
-}
-
 .pg-crosshair {
   position: absolute;
   top: 50%;

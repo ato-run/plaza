@@ -153,10 +153,9 @@ export function createMascot(
   const bubble = document.createElement("div");
   bubble.className = "pg-speech";
   bubble.style.display = "none";
-  const nameTag = document.createElement("div");
-  nameTag.className = "pg-nametag pg-nametag--mascot";
-  nameTag.textContent = `${look.emoji} ${spec.name}`;
-  label.append(bubble, nameTag);
+  // No floating name tag: a guide is introduced by the interaction prompt
+  // when you come close, and otherwise only speaks (the bubble) when petted.
+  label.append(bubble);
   labelHost.append(label);
 
   const baseY = look.upright ? 1.35 : 1.15;
