@@ -196,6 +196,13 @@ export default function PlaygroundPage() {
   }, []);
   const identityTimeoutRef = useRef<number | undefined>(undefined);
   const openMenuRef = useRef(openMenu);
+  const toggleCrouch = useCallback(() => {
+    setCrouched((previous) => {
+      const next = !previous;
+      worldRef.current?.setCrouching(next);
+      return next;
+    });
+  }, []);
   openMenuRef.current = openMenu;
   const [crouched, setCrouched] = useState(false);
   const [runnerBacked, setRunnerBacked] = useState(false);
@@ -1205,7 +1212,9 @@ export default function PlaygroundPage() {
         </div>
       ) : null}
 
-      {target && !chatting ? (
+      {/* Mascots get no prompt: they are scenery you can still pet with E,
+          not something the HUD should keep pointing at. */}
+      {target && target.kind !== "mascot" && !chatting ? (
         <div className="pg-interaction">
           <span className="pg-interaction-kind">{targetKindLabel(target)}</span>
           <strong>{targetTitle(target)}</strong>
@@ -1274,19 +1283,23 @@ export default function PlaygroundPage() {
 
       <MobileJoystick onChange={(x, y) => worldRef.current?.setJoystick(x, y)} />
 
+      {/* Act on touch-DOWN, not click: a phone does not synthesize a click
+          for a second finger while the first is on the joystick, so a
+          click-driven Jump could never fire while walking. Keyboard
+          activation (click with detail 0) still works. */}
       <div className="pg-actions">
         <button
           type="button"
           className={`pg-action${crouched ? " pg-action--active" : ""}`}
           aria-pressed={crouched}
           aria-label="Crouch"
-          onClick={() =>
-            setCrouched((previous) => {
-              const next = !previous;
-              worldRef.current?.setCrouching(next);
-              return next;
-            })
-          }
+          onPointerDown={(event) => {
+            event.preventDefault();
+            toggleCrouch();
+          }}
+          onClick={(event) => {
+            if (event.detail === 0) toggleCrouch();
+          }}
         >
           Crouch
         </button>
@@ -1294,7 +1307,13 @@ export default function PlaygroundPage() {
           type="button"
           className="pg-action"
           aria-label="Jump"
-          onClick={() => worldRef.current?.jump()}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            worldRef.current?.jump();
+          }}
+          onClick={(event) => {
+            if (event.detail === 0) worldRef.current?.jump();
+          }}
         >
           Jump
         </button>

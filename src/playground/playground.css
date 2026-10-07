@@ -477,7 +477,7 @@ kbd {
     font: inherit;
     font-size: 13px;
     cursor: pointer;
-    touch-action: manipulation;
+    touch-action: none;
   }
 
   .pg-action--active {
