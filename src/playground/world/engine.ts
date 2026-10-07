@@ -445,7 +445,7 @@ export function createEngine(options: EngineOptions): Engine {
     camera.rotation.set(pitch, yaw, 0, "YXZ");
     camera.getWorldDirection(forward);
 
-    world?.update?.(dt, devClock ?? now);
+    world?.update?.(dt, devClock ?? now, camera.position);
 
     const pose: Pose = crouching ? "crouch" : "stand";
     frameHandler?.({

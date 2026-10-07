@@ -850,3 +850,168 @@ kbd {
   font-size: 12px;
   color: #607668;
 }
+
+/* ---- Nagi (guide) --------------------------------------------------------- */
+
+.pg-guide {
+  position: absolute;
+  left: 50%;
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(440px, calc(100% - 32px));
+  max-height: calc(100% - 140px);
+  overflow-y: auto;
+  touch-action: pan-y;
+  padding: 16px 18px 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 18px 48px rgba(20, 40, 32, 0.24);
+  pointer-events: auto;
+  z-index: 7;
+  color: #22403a;
+}
+
+.pg-guide:focus {
+  outline: none;
+}
+
+.pg-guide-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.pg-guide-head > div {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.pg-guide-head strong {
+  font-size: 15px;
+}
+
+.pg-guide-head small {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: #2f7f7a;
+}
+
+.pg-guide-avatar {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #e4f1ef;
+  font-size: 18px;
+}
+
+.pg-guide-asked {
+  justify-self: end;
+  margin: 0 0 8px auto;
+  width: fit-content;
+  max-width: 80%;
+  padding: 7px 12px;
+  border-radius: 14px 14px 2px 14px;
+  background: #e9f1ed;
+  font-size: 13px;
+}
+
+.pg-guide-line {
+  margin: 0 0 12px;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.pg-guide-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.pg-guide-choices button {
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: 18px;
+  border: 1px solid #b9d3c8;
+  background: #f4faf7;
+  color: #1f4a3d;
+  cursor: pointer;
+}
+
+.pg-guide-choices button:first-child {
+  background: #295d49;
+  border-color: #295d49;
+  color: #fff;
+}
+
+.pg-guide-ask {
+  display: flex;
+  gap: 8px;
+}
+
+.pg-guide-ask input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 13px;
+  padding: 9px 12px;
+  border: 1px solid #c9d8cf;
+  border-radius: 10px;
+}
+
+.pg-guide-ask button {
+  font: inherit;
+  font-size: 13px;
+  padding: 9px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: #e4efe9;
+  color: #22403a;
+  cursor: pointer;
+}
+
+.pg-guide-ask button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pg-guide-note {
+  position: absolute;
+  left: 50%;
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(520px, calc(100% - 32px));
+  padding: 10px 12px 10px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 8px 26px rgba(20, 40, 32, 0.18);
+  font-size: 14px;
+  pointer-events: auto;
+  z-index: 5;
+}
+
+.pg-guide-note strong {
+  margin-right: 8px;
+  color: #2f7f7a;
+}
+
+.pg-guide-note button {
+  border: 0;
+  background: transparent;
+  color: #587065;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.pg-speech--guide {
+  border: 1px solid #b9d3c8;
+}

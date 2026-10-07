@@ -38,6 +38,11 @@ import { beachWalkable, terrainHeight, waterDepth } from "../beach/coast";
 import { createTerrain } from "../beach/terrain";
 import { createVegetation } from "../beach/vegetation";
 import { buildPlazaProps } from "../beach/props";
+import { createGuideNpc, GUIDE_ID, GUIDE_NAME } from "../guideNpc";
+import { reply } from "../../guide/nagi";
+
+/** Nagi stands just ahead of the entrance, turned toward whoever arrives. */
+const GUIDE_SPOT = { x: 2.6, z: 8.4 } as const;
 import {
   animateMascot,
   createMascot,
@@ -127,6 +132,8 @@ export const centralPlaza: WorldDefinition = {
       { ...fountain, top: FOUNTAIN_TOP },
       circle(0, 0, FOUNTAIN_COLUMN_RADIUS),
       ...sceneryColliders(),
+      // The guide, locally only: the AI's shared map does not know her.
+      circle(GUIDE_SPOT.x, GUIDE_SPOT.z, 0.45),
     ];
     const interactables: Interactable[] = [];
     const mascots: Mascot[] = [];
@@ -181,6 +188,28 @@ export const centralPlaza: WorldDefinition = {
       reducedMotion,
     });
 
+    // ---- guide -----------------------------------------------------------
+    const guide = createGuideNpc(builder, labelHost, {
+      ...GUIDE_SPOT,
+      yaw: Math.atan2(0 - GUIDE_SPOT.x, 11 - GUIDE_SPOT.z),
+      // The first line she says, unprompted, when you first come close.
+      greeting: reply("greeting", {
+        touch: false,
+        lookMode: "lock",
+        engaged: true,
+        canPost: true,
+        peopleNearby: 0,
+        exhibits: 0,
+        hasTimesOfDay: true,
+      }).text,
+    });
+    interactables.push({
+      kind: "guide",
+      id: GUIDE_ID,
+      title: GUIDE_NAME,
+      anchor: guide.anchor,
+    });
+
     // ---- mascots ---------------------------------------------------------
     for (const spec of CENTRAL_MASCOTS) {
       const mascot = createMascot(builder, labelHost, spec);
@@ -202,14 +231,18 @@ export const centralPlaza: WorldDefinition = {
       // middle and the boards are still the first thing beyond it.
       softwareSlots: CENTRAL_SOFTWARE_SLOTS,
 
-      labels: mascots.map((mascot) => ({
+      guide: {
+        say: (text, durationMs) => guide.say(text, performance.now(), durationMs),
+      },
+
+      labels: [{ element: guide.label, position: guide.labelPosition }, ...mascots.map((mascot) => ({
         element: mascot.label,
         position: new THREE.Vector3(
           mascot.group.position.x,
           mascot.baseY + 0.15,
           mascot.group.position.z,
         ),
-      })),
+      }))],
 
       // The plaza is flat at 0; beyond it people may walk the beach down
       // into the shallows, slower once the water is above the ankles.
@@ -223,12 +256,13 @@ export const centralPlaza: WorldDefinition = {
         return depth <= 0.1 ? 1 : depth >= 0.5 ? 0.55 : 1 - (depth - 0.1) * 1.125;
       },
 
-      update(_dt, now) {
+      update(_dt, now, eye) {
         // One local clock drives water, sand and wind; nothing about the sea
         // is synchronised over the network. Reduced motion slows it down.
         const seconds = (now / 1000) * (reducedMotion ? 0.4 : 1);
         coast.uTime.value = seconds;
         vegetation.wind.uTime.value = seconds;
+        guide.update(now, eye, reducedMotion);
         for (const mascot of mascots) {
           animateMascot(mascot, now, reducedMotion);
           updateMascotBubble(mascot, now);
@@ -240,6 +274,7 @@ export const centralPlaza: WorldDefinition = {
         // Only what the builder does not know about: the DOM labels. Meshes,
         // materials and textures are the engine's builder to release.
         for (const mascot of mascots) disposeMascot(mascot);
+        guide.dispose();
       },
     };
   },
