@@ -5,7 +5,7 @@ import { beachWalkable, waterDepth } from "../beach/coast";
 import { sceneryColliders } from "../beach/scenery";
 import { CENTRAL_BENCHES, CENTRAL_PLANTERS, CENTRAL_SOFTWARE_SLOTS, CENTRAL_TREES, CENTRAL_LANTERNS, EXHIBIT_OBSTACLE_RADIUS } from "../worlds/centralGeometry";
 import { plazaSpots, RESIDENTS } from "./cast";
-import { buildGrid, createSchedule, findPath, SLOT_SECONDS } from "./schedule";
+import { buildGrid, createSchedule, findPath, separate, SLOT_SECONDS } from "./schedule";
 
 const statics = [
   circle(0, 0, 3.3),
@@ -56,6 +56,47 @@ describe("resident schedule", () => {
         // No teleports: at most a brisk walk per quarter second.
         expect(Math.hypot(state.x - previous.x, state.z - previous.z)).toBeLessThan(0.75);
         previous = state;
+      }
+    }
+  });
+
+  it("never puts two residents on the same spot at the same time", () => {
+    const schedule = createSchedule(grid, spots, RESIDENTS.length);
+    const start = 1_800_000_000;
+    for (let t = start; t < start + SLOT_SECONDS * 30; t += 2) {
+      const held = new Map<string, number>();
+      for (let resident = 0; resident < RESIDENTS.length; resident += 1) {
+        const state = schedule.stateAt(resident, t);
+        if (state.moving) continue;
+        expect(held.has(state.spot.id), `${state.spot.id} at ${t}`).toBe(false);
+        held.set(state.spot.id, resident);
+      }
+    }
+  });
+
+  it("answers the same whatever order it is asked in", () => {
+    const start = 1_800_000_000;
+    const forward = createSchedule(grid, spots, RESIDENTS.length);
+    const backward = createSchedule(grid, spots, RESIDENTS.length);
+    const times = Array.from({ length: 40 }, (_, i) => start + i * 37);
+    const a = times.map((t) => RESIDENTS.map((_, r) => forward.stateAt(r, t).spot.id));
+    const b = [...times].reverse().map((t) => [...RESIDENTS.keys()].reverse().map((r) => backward.stateAt(r, t).spot.id).reverse()).reverse();
+    expect(b).toEqual(a);
+  });
+
+  it("keeps characters apart after separation", () => {
+    const schedule = createSchedule(grid, spots, RESIDENTS.length);
+    const start = 1_800_000_000;
+    for (let t = start; t < start + SLOT_SECONDS * 10; t += 0.5) {
+      const states = RESIDENTS.map((_, r) => schedule.stateAt(r, t));
+      const points = [...states.map((s) => ({ x: s.x, z: s.z })), { x: 2.6, z: 8.4 }];
+      separate(points, [...states.map((s) => s.pose === "sit"), true]);
+      for (let a = 0; a < points.length; a += 1) {
+        for (let b = a + 1; b < points.length; b += 1) {
+          const bothSeated = states[a]?.pose === "sit" && states[b]?.pose === "sit";
+          if (bothSeated) continue;
+          expect(Math.hypot(points[a].x - points[b].x, points[a].z - points[b].z), `t=${t} ${a}/${b}`).toBeGreaterThan(0.7);
+        }
       }
     }
   });

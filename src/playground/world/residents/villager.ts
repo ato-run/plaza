@@ -10,7 +10,7 @@ import { circle, type CircleCollider } from "../collision";
 import type { Interactable } from "../types";
 import type { WorldBuilder } from "../primitives";
 import { CHATTER, LINES, type ResidentSpec, type Species } from "./cast";
-import { hash01, type Schedule } from "./schedule";
+import { hash01, separate, type Schedule } from "./schedule";
 
 interface Look {
   fur: string;
@@ -171,7 +171,8 @@ export interface Residents {
   colliders: CircleCollider[];
   interactables: Interactable[];
   labels: { element: HTMLElement; position: THREE.Vector3 }[];
-  update(eye: THREE.Vector3 | undefined, reducedMotion: boolean): void;
+  /** `others` are characters residents must keep clear of (Nagi). */
+  update(eye: THREE.Vector3 | undefined, reducedMotion: boolean, others?: readonly { x: number; z: number }[]): void;
   dispose(): void;
 }
 
@@ -266,10 +267,18 @@ export function createResidents(
     interactables,
     labels: live.map((resident) => ({ element: resident.label, position: resident.labelPosition })),
 
-    update(eye, reducedMotion) {
+    update(eye, reducedMotion, others = []) {
       const seconds = clock();
       const nowMs = seconds * 1000;
-      const states = live.map((_, index) => schedule.stateAt(index, seconds));
+      const states = live.map((_, index) => ({ ...schedule.stateAt(index, seconds) }));
+      // Keep bodies apart: residents passing each other step aside, nobody
+      // stands inside Nagi. Seated residents and Nagi do not move.
+      const points = [...states.map((state) => ({ x: state.x, z: state.z })), ...others.map((o) => ({ ...o }))];
+      separate(points, [...states.map((state) => state.pose === "sit"), ...others.map(() => true)]);
+      states.forEach((state, index) => {
+        state.x = points[index].x;
+        state.z = points[index].z;
+      });
       // Ambient chatter is a background murmur: only the few nearest
       // residents may show it, so bubbles never pile up across the plaza.
       const distances = states.map((state) => (eye ? Math.hypot(eye.x - state.x, eye.z - state.z) : Infinity));

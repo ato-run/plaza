@@ -283,14 +283,45 @@ export function createSchedule(
 ): Schedule {
   const cache = new Map<string, { points: { x: number; z: number }[]; length: number }>();
   const offset = (i: number) => hash01(i, 7) * SLOT_SECONDS;
-  const spotOf = (i: number, slot: number): Spot => {
+  /**
+   * Which spot resident i holds in a slot — never one another resident holds
+   * at the same time. Reservations go by index: resident i avoids every
+   * spot that residents 0..i-1 hold during any of their slots overlapping
+   * i's slot (deterministic, so every visitor resolves it the same way).
+   * Spot i occupies from its slot's start (it may still be walking there)
+   * until the next slot starts.
+   */
+  const picks = new Map<string, number>();
+  const pickOf = (i: number, slot: number): number => {
+    const key = `${i}:${slot}`;
+    const known = picks.get(key);
+    if (known !== undefined) return known;
     const pool = homes[i] ?? spots.map((_, index) => index);
-    let pick = pool[Math.floor(hash01(i * 131 + 3, slot) * pool.length)];
-    // Never "go" to where you already are.
-    const previous = pool[Math.floor(hash01(i * 131 + 3, slot - 1) * pool.length)];
-    if (pick === previous) pick = pool[(pool.indexOf(pick) + 1) % pool.length];
-    return spots[pick];
+    const taken = new Set<number>();
+    const start = slot * SLOT_SECONDS - offset(i);
+    const end = start + SLOT_SECONDS;
+    for (let j = 0; j < i; j += 1) {
+      const first = Math.floor((start + offset(j)) / SLOT_SECONDS);
+      const last = Math.floor((end + offset(j)) / SLOT_SECONDS);
+      for (let m = first; m <= last; m += 1) taken.add(pickOf(j, m));
+      // Still standing at the previous spot while setting off.
+      taken.add(pickOf(j, first - 1));
+    }
+    // (Picking the spot you already hold is allowed: you simply stay on.)
+    const startAt = Math.floor(hash01(i * 131 + 3, slot) * pool.length);
+    let pick = pool[startAt];
+    for (let step = 0; step < pool.length; step += 1) {
+      const candidate = pool[(startAt + step) % pool.length];
+      if (!taken.has(candidate)) {
+        pick = candidate;
+        break;
+      }
+    }
+    picks.set(key, pick);
+    if (picks.size > residents * 400) picks.delete(picks.keys().next().value as string);
+    return pick;
   };
+  const spotOf = (i: number, slot: number): Spot => spots[pickOf(i, slot)];
   const route = (i: number, slot: number) => {
     const key = `${i}:${slot}`;
     let cached = cache.get(key);
@@ -356,4 +387,46 @@ export function createSchedule(
       return { x: to.x, z: to.z, yaw: to.yaw, moving: false, pose: to.pose, spot: to, stayed: 0 };
     },
   };
+}
+
+/**
+ * Push apart characters closer than `minDistance`, deterministically (fixed
+ * order, fixed iterations), so two residents never stand inside each other
+ * while passing. `fixed[i]` marks ones that must not move (seated, or
+ * someone else's character); the other side of the pair moves the whole way.
+ */
+export function separate(
+  points: { x: number; z: number }[],
+  fixed: readonly boolean[],
+  minDistance = 0.75,
+  iterations = 4,
+): void {
+  for (let round = 0; round < iterations; round += 1) {
+    for (let a = 0; a < points.length; a += 1) {
+      for (let b = a + 1; b < points.length; b += 1) {
+        const dx = points[b].x - points[a].x;
+        const dz = points[b].z - points[a].z;
+        const distance = Math.hypot(dx, dz);
+        if (distance >= minDistance || (fixed[a] && fixed[b])) continue;
+        let nx: number;
+        let nz: number;
+        if (distance < 1e-4) {
+          // Exactly on top of each other: split along a direction fixed by the pair.
+          const angle = hash01(a, b) * Math.PI * 2;
+          nx = Math.cos(angle);
+          nz = Math.sin(angle);
+        } else {
+          nx = dx / distance;
+          nz = dz / distance;
+        }
+        const overlap = minDistance - distance;
+        const shareA = fixed[a] ? 0 : fixed[b] ? 1 : 0.5;
+        const shareB = 1 - shareA;
+        points[a].x -= nx * overlap * shareA;
+        points[a].z -= nz * overlap * shareA;
+        points[b].x += nx * overlap * shareB;
+        points[b].z += nz * overlap * shareB;
+      }
+    }
+  }
 }

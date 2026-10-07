@@ -288,7 +288,7 @@ export const centralPlaza: WorldDefinition = {
         nagiCollider.z = nagi.z;
         nagiCollider.r = eye && Math.hypot(eye.x - nagi.x, eye.z - nagi.z) < 0.7 ? 0 : 0.4;
         guide.update(now, eye, reducedMotion);
-        residents.update(eye, reducedMotion);
+        residents.update(eye, reducedMotion, [{ x: nagi.x, z: nagi.z }]);
         props.update(seconds);
       },
 
