@@ -19,7 +19,7 @@ export const ruins: WorldDefinition = {
   id: "ruins",
   name: "RUINS",
   index: 7,
-  tagline: "面白いものを、見つける。",
+  tagline: "Find something interesting.",
   spawn: { x: 0, y: 0, z: 13, yaw: 0 },
   environment: {
     background: "#cfc9b6",

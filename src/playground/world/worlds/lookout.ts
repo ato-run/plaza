@@ -19,7 +19,7 @@ export const lookout: WorldDefinition = {
   id: "lookout",
   name: "LOOKOUT",
   index: 5,
-  tagline: "遠くで起きていることを、眺める。",
+  tagline: "Watch what's happening far away.",
   spawn: { x: 0, y: 0, z: 10, yaw: 0 },
   environment: {
     background: "#bcd9e6",

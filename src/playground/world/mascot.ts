@@ -79,13 +79,13 @@ export interface MascotSpec {
 }
 
 const DEFAULT_LINES: Record<MascotSpecies, string[]> = {
-  cat: ["ここはみんなの広場だよ。", "ベンチ、あたたかいよ。"],
-  dog: ["やあ！ 誰か来るのを待ってるんだ。", "走り回ってもいいよ。"],
-  panda: ["向こうに置いてあるの、遊べるよ。", "のんびりしていってね。"],
-  fox: ["いい店が並んでるよ。", "見て回ってみて。"],
-  penguin: ["風がつめたいね。", "遠くまで見えるよ。"],
-  rabbit: ["草がやわらかいよ。", "どこまでも走れそう。"],
-  bird: ["上から見てるよ。", "静かな夜だね。"],
+  cat: ["This plaza is for everyone.", "The benches are warm."],
+  dog: ["Hi! I'm waiting for someone to show up.", "Feel free to run around."],
+  panda: ["You can play with the things over there.", "Take it easy."],
+  fox: ["There are good stalls here.", "Have a look around."],
+  penguin: ["The wind is chilly.", "You can see a long way."],
+  rabbit: ["The grass is soft.", "I could run forever."],
+  bird: ["I'm watching from above.", "Quiet night."],
 };
 
 /**

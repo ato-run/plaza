@@ -15,12 +15,12 @@ interface Status {
   reason: string | null;
 }
 const labels: Record<Status["status"], string> = {
-  unavailable: "接続待ち",
-  ready: "参加待ち",
-  running: "参加中",
-  paused: "一時停止中",
-  ended: "終了",
-  degraded: "待機中（接続・判断エラー）",
+  unavailable: "Waiting to connect",
+  ready: "Ready to join",
+  running: "In the plaza",
+  paused: "Paused",
+  ended: "Ended",
+  degraded: "Waiting (connection or decision error)",
 };
 export function CoopControls({
   posts,
@@ -61,7 +61,7 @@ export function CoopControls({
       setStatus(null);
       return false;
     }
-    if (!response.ok) throw new Error("AIの状態を取得できませんでした。");
+    if (!response.ok) throw new Error("Couldn't get the AI's status.");
     const next = (await response.json()) as Status;
     setStatus(next);
     setObserve(next.consent.observe);
@@ -76,7 +76,7 @@ export function CoopControls({
       try {
         if (!(await refresh(abort.signal))) return;
       } catch {
-        if (!abort.signal.aborted) setError("AIとの接続を確認できません。");
+        if (!abort.signal.aborted) setError("Can't reach the AI.");
       }
       if (!abort.signal.aborted) timer = setTimeout(poll, 2000);
     };
@@ -99,12 +99,12 @@ export function CoopControls({
       });
       if (!response.ok)
         throw new Error(
-          "操作を確認できませんでした。状態を確認して再操作してください。",
+          "Couldn't confirm that action. Check the status and try again.",
         );
       if (name === "goal") setInstruction("");
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "接続エラー");
+      setError(e instanceof Error ? e.message : "Connection error");
     } finally {
       setBusy(false);
     }
@@ -113,7 +113,7 @@ export function CoopControls({
   return (
     <aside
       className="pg-coop"
-      aria-label="AIとの共同操作"
+      aria-label="Play with AI"
       onKeyDown={(e) => e.stopPropagation()}
       onFocus={() => onFocusChange(true)}
       onBlur={(e) => {
@@ -128,14 +128,14 @@ export function CoopControls({
         </summary>
         {status.actor && (
           <small>
-            開始者：{status.actor.started_by.animal_emoji}{" "}
+            Started by: {status.actor.started_by.animal_emoji}{" "}
             {status.actor.started_by.display_name}
           </small>
         )}
-        {!status.available && <p>実行プロセスの接続を待っています。</p>}
+        {!status.available && <p>Waiting for the AI process to connect.</p>}
         {status.available && (
           <fieldset disabled={busy}>
-            <legend>この検証Instanceでの同意</legend>
+            <legend>Consent for this test instance</legend>
             <label>
               <input
                 type="checkbox"
@@ -148,7 +148,7 @@ export function CoopControls({
                   });
                 }}
               />
-              自分の位置・指示をAIが観測する
+              Let the AI see my position and instructions
             </label>
             <label>
               <input
@@ -163,10 +163,10 @@ export function CoopControls({
                   });
                 }}
               />
-              指示と必要な候補情報をTypeSafeへ送信する
+              Send instructions and the options they need to TypeSafe
             </label>
             <small>
-              部屋の会話履歴は送信しません。同意はいつでも撤回できます。
+              Room chat history is not sent. You can withdraw consent at any time.
             </small>
           </fieldset>
         )}
@@ -178,7 +178,7 @@ export function CoopControls({
                   disabled={busy || !status.available || !observe || !disclose}
                   onClick={() => void command("start")}
                 >
-                  AIを参加させる
+                  Add AI
                 </button>
               )}
               {["paused", "degraded"].includes(status.status) && (
@@ -186,14 +186,14 @@ export function CoopControls({
                   disabled={busy || !status.available || !observe || !disclose}
                   onClick={() => void command("resume")}
                 >
-                  再開
+                  Resume
                 </button>
               )}
               {status.status === "running" && (
-                <button onClick={() => void command("pause")}>一時停止</button>
+                <button onClick={() => void command("pause")}>Pause</button>
               )}
               {!["ready", "ended"].includes(status.status) && (
-                <button onClick={() => void command("end")}>終了</button>
+                <button onClick={() => void command("end")}>End</button>
               )}
             </div>
             {status.status === "running" && (
@@ -204,34 +204,34 @@ export function CoopControls({
                     void command("goal", { instruction: instruction.trim() });
                 }}
               >
-                <label htmlFor="coop-instruction">AIへ指示</label>
+                <label htmlFor="coop-instruction">Instruction to AI</label>
                 <input
                   id="coop-instruction"
                   value={instruction}
                   maxLength={500}
                   onChange={(e) => setInstruction(e.target.value)}
-                  placeholder="近くに来て"
+                  placeholder="Come here"
                 />
-                <button disabled={busy || !instruction.trim()}>送る</button>
+                <button disabled={busy || !instruction.trim()}>Send</button>
               </form>
             )}
             <small>
-              最新の指示で置き換えます。上限：10分・30回の判断。使用{" "}
-              {status.calls}/30回
+              Each instruction replaces the last. Limit: 10 minutes, 30 decisions. Used{" "}
+              {status.calls}/30
             </small>
           </>
         )}
         {error && <p role="alert">{error}</p>}
       </details>
       <details>
-        <summary>投稿履歴（{posts.length}）</summary>
+        <summary>Post history ({posts.length})</summary>
         <ol className="pg-coop-history">
           {posts.slice(-30).map((post) => {
             const author = post.author_actor
               ? `${post.author_actor.display_name} · AI`
               : (participants.find(
                   (p) => p.principal_id === post.author_user_id,
-                )?.display_name ?? "参加者");
+                )?.display_name ?? "Participant");
             return (
               <li key={post.id} data-post-id={post.id}>
                 <strong>{author}</strong>

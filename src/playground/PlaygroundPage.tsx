@@ -136,15 +136,15 @@ function targetTitle(target: WorldTarget): string {
 function targetActionLabel(target: WorldTarget): string {
   switch (target.kind) {
     case "person":
-      return "話しかける";
+      return "Talk";
     case "mascot":
-      return "なでる";
+      return "Pet";
     case "seat":
-      return "座る";
+      return "Sit";
     case "app":
-      return "使ってみる";
+      return "Try";
     default:
-      return "参加する";
+      return "Join";
   }
 }
 
@@ -472,7 +472,7 @@ export default function PlaygroundPage() {
       await catchUpRoomRef.current();
       void fetchCardsRef.current();
     } catch {
-      setError("Playground を読み込めませんでした。");
+      setError("Couldn't load Plaza.");
     }
   }, []);
 
@@ -840,7 +840,7 @@ export default function PlaygroundPage() {
               ? stateRef.current.cards.apps[item.ref]
               : stateRef.current.cards.activities[item.ref];
           if (!card || !card.usable) {
-            setError("これはいま利用できません。");
+            setError("This isn't available right now.");
             return;
           }
           const path =
@@ -849,7 +849,7 @@ export default function PlaygroundPage() {
               : `/activity/${encodeURIComponent(item.ref)}`;
           const href = pwaUrl(path);
           if (!href) {
-            setError("リンク先を解決できませんでした。");
+            setError("Couldn't open that link.");
             return;
           }
           // A different origin, so a new tab — same rule the PWA's own App
@@ -915,7 +915,7 @@ export default function PlaygroundPage() {
       });
     } catch {
       setError(
-        "3D表示を開始できませんでした。WebGL に対応したブラウザで開いてください。",
+        "Couldn't start 3D view. Open Plaza in a browser that supports WebGL.",
       );
       return;
     }
@@ -949,7 +949,7 @@ export default function PlaygroundPage() {
       ref: card.ref,
       kind: "app" as const,
       title: card.title,
-      subtitle: card.usable ? "使ってみる" : "いま利用できません",
+      subtitle: card.usable ? "Try it" : "Not available right now",
     }));
     const activities = Object.values(state.cards.activities).map((card) => ({
       ref: card.ref,
@@ -958,7 +958,7 @@ export default function PlaygroundPage() {
       subtitle:
         card.participant_count !== null
           ? `${card.participant_count} people`
-          : "参加する",
+          : "Join",
     }));
     return [...apps, ...activities];
   }, [state.cards]);
@@ -1027,7 +1027,7 @@ export default function PlaygroundPage() {
         await maybeSeal();
         void fetchCardsRef.current();
       } catch {
-        setError("投稿できませんでした。");
+        setError("Couldn't send your message.");
       }
       closeChat();
     },
@@ -1058,7 +1058,7 @@ export default function PlaygroundPage() {
           <span className="pg-brand-sub">plaza</span>
         </span>
         {world.environment.timesOfDay ? (
-          <div className="pg-time" role="group" aria-label="時間帯">
+          <div className="pg-time" role="group" aria-label="Time of day">
             {world.environment.timesOfDay.map((entry, index) => {
               const active = (timeOfDay ?? world.environment.timesOfDay?.[0]?.id) === entry.id;
               return (
@@ -1109,11 +1109,11 @@ export default function PlaygroundPage() {
           <button
             type="button"
             className="pg-selector-backdrop"
-            aria-label="閉じる"
+            aria-label="Close"
             onClick={() => setSelectorOpen(false)}
           />
-          <div className="pg-selector" role="dialog" aria-label="ワールドを選ぶ">
-            <h2>ワールド</h2>
+          <div className="pg-selector" role="dialog" aria-label="Choose a world">
+            <h2>Worlds</h2>
             <ul>
               {WORLDS.map((definition) => {
                 const count = presence.worldOnline[definition.id];
@@ -1138,14 +1138,14 @@ export default function PlaygroundPage() {
                       </span>
                       <span className="pg-selector-count">
                         {!definition.available
-                          ? "準備中"
+                          ? "Coming soon"
                           : here
-                            ? "ここにいます"
+                            ? "You are here"
                             : /* An absent count is not zero: a server that has
                                  not shipped per-World counts yet would
                                  otherwise report every World as empty. */
                               typeof count === "number"
-                              ? `${count}人`
+                              ? `${count} here`
                               : "—"}
                       </span>
                     </button>
@@ -1181,8 +1181,8 @@ export default function PlaygroundPage() {
           </span>
           <span className="pg-self-reaction-from">
             {presence.selfReaction.from_display_name
-              ? `${presence.selfReaction.from_animal_emoji} ${presence.selfReaction.from_display_name} から`
-              : "あなたへ"}
+              ? `from ${presence.selfReaction.from_animal_emoji} ${presence.selfReaction.from_display_name}`
+              : "for you"}
           </span>
         </div>
       ) : null}
@@ -1208,16 +1208,16 @@ export default function PlaygroundPage() {
           disabled={!worldReady}
           onClick={() => worldRef.current?.requestPointerLock()}
         >
-          {worldReady ? "クリックして探索する" : "広場を準備しています…"}
+          {worldReady ? "Click to explore" : "Getting the plaza ready…"}
         </button>
       ) : null}
 
-      <div className="pg-reactions" role="group" aria-label="リアクション">
+      <div className="pg-reactions" role="group" aria-label="Reactions">
         {PLAYGROUND_FACE_REACTIONS.map((emoji, index) => (
           <button
             key={emoji}
             type="button"
-            title={`${index + 1} · 見ている相手にリアクション`}
+            title={`${index + 1} · React to the person you're facing`}
             disabled={!canPost}
             onClick={() => worldRef.current?.reactAtTarget(emoji)}
           >
@@ -1233,8 +1233,8 @@ export default function PlaygroundPage() {
             {viewer?.animal_emoji ?? "…"}
           </span>
           <div>
-            <strong>{viewer?.display_name ?? "接続中"}</strong>
-            <small>{connected ? "広場に参加中" : "再接続しています…"}</small>
+            <strong>{viewer?.display_name ?? "Connecting"}</strong>
+            <small>{connected ? "In the plaza" : "Reconnecting…"}</small>
           </div>
         </div>
         <div className="pg-keys" aria-hidden="true">
@@ -1242,17 +1242,17 @@ export default function PlaygroundPage() {
             <kbd>W</kbd>
             <kbd>A</kbd>
             <kbd>S</kbd>
-            <kbd>D</kbd> 移動
+            <kbd>D</kbd> Move
           </span>
           <span>
-            <kbd>Space</kbd> ジャンプ
+            <kbd>Space</kbd> Jump
           </span>
           <span>
-            <kbd>C</kbd> しゃがむ
+            <kbd>C</kbd> Crouch
           </span>
-          <span>{lookMode === "drag" ? "ドラッグ 視点" : "マウス 視点"}</span>
+          <span>{lookMode === "drag" ? "Drag Look" : "Mouse Look"}</span>
           <span>
-            <kbd>esc</kbd> 解除
+            <kbd>esc</kbd> Release
           </span>
         </div>
         {canPost ? (
@@ -1261,11 +1261,11 @@ export default function PlaygroundPage() {
             className="pg-chat-open"
             onClick={() => setChatting(true)}
           >
-            話す<kbd>↵</kbd>
+            Talk<kbd>↵</kbd>
           </button>
         ) : (
           <a className="pg-chat-open" href={pwaUrl(SIGN_IN_PATH) ?? SIGN_IN_PATH}>
-            サインインして話す
+            Sign in to talk
           </a>
         )}
       </footer>
@@ -1277,7 +1277,7 @@ export default function PlaygroundPage() {
           type="button"
           className={`pg-action${crouched ? " pg-action--active" : ""}`}
           aria-pressed={crouched}
-          aria-label="しゃがむ"
+          aria-label="Crouch"
           onClick={() =>
             setCrouched((previous) => {
               const next = !previous;
@@ -1286,15 +1286,15 @@ export default function PlaygroundPage() {
             })
           }
         >
-          しゃがむ
+          Crouch
         </button>
         <button
           type="button"
           className="pg-action"
-          aria-label="ジャンプ"
+          aria-label="Jump"
           onClick={() => worldRef.current?.jump()}
         >
-          ジャンプ
+          Jump
         </button>
       </div>
 
@@ -1302,11 +1302,11 @@ export default function PlaygroundPage() {
         <form className="pg-compose" onSubmit={submit}>
           <input
             ref={inputRef}
-            aria-label="メッセージ"
+            aria-label="Message"
             placeholder={
               target?.kind === "person"
-                ? `${target.name} の近くで話す…`
-                : "近くのみんなに話す…"
+                ? `Talk near ${target.name}…`
+                : "Talk to everyone nearby…"
             }
             value={draft}
             maxLength={TEXT_LIMIT}
@@ -1335,9 +1335,9 @@ export default function PlaygroundPage() {
             {remaining}
           </span>
           <button type="submit" disabled={!canPost || !draft.trim() || remaining < 0}>
-            送信
+            Send
           </button>
-          <button type="button" onClick={closeChat} aria-label="閉じる">
+          <button type="button" onClick={closeChat} aria-label="Close">
             ✕
           </button>
         </form>
@@ -1346,7 +1346,7 @@ export default function PlaygroundPage() {
       {error ? (
         <div className="pg-notice" role="status">
           {error}
-          <button type="button" onClick={() => setError(null)} aria-label="閉じる">
+          <button type="button" onClick={() => setError(null)} aria-label="Close">
             ✕
           </button>
         </div>

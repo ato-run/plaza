@@ -19,7 +19,7 @@ export const market: WorldDefinition = {
   id: "market",
   name: "MARKET",
   index: 2,
-  tagline: "屋台がならぶ通り。見て回る場所。",
+  tagline: "A street of stalls to browse.",
   spawn: { x: 0, y: 0, z: 14, yaw: 0 },
   environment: {
     background: "#e2dbc8",

@@ -306,11 +306,11 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
       if (currentTarget?.kind === "mascot") {
         // A mascot is scenery. Letting a wave "succeed" at one would tell the
         // sender somebody received it when nobody did.
-        hooks.onError("その子はガイドだよ。近くの人に向けてみて。");
+        hooks.onError("That's a guide. Try reacting to someone nearby.");
         return;
       }
       if (currentTarget?.kind !== "person") {
-        hooks.onError("近くの人を中央に捉えてからリアクションしてください。");
+        hooks.onError("Center someone nearby first, then react.");
         return;
       }
       hooks.onFaceReaction(currentTarget.principalId, emoji);

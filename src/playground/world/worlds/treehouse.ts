@@ -19,7 +19,7 @@ export const treehouse: WorldDefinition = {
   id: "treehouse",
   name: "TREEHOUSE",
   index: 4,
-  tagline: "少し隠れて集まる、秘密基地。",
+  tagline: "A hideout to gather out of sight.",
   spawn: { x: 0, y: 0, z: 8, yaw: 0 },
   environment: {
     background: "#bcd6c4",
