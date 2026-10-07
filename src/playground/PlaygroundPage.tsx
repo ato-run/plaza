@@ -182,6 +182,21 @@ export default function PlaygroundPage() {
       return null;
     }
   });
+  const [showGuide, setShowGuide] = useState(() => {
+    try {
+      return localStorage.getItem("plaza:exploration-guide") !== "seen";
+    } catch {
+      return true;
+    }
+  });
+  const dismissGuide = () => {
+    setShowGuide(false);
+    try {
+      localStorage.setItem("plaza:exploration-guide", "seen");
+    } catch {
+      // Storage may be unavailable in an embedded app.
+    }
+  };
   const [chatting, setChatting] = useState(false);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -1125,6 +1140,11 @@ export default function PlaygroundPage() {
     [draft, canPost, remaining, catchUpRoom, closeChat, maybeSeal],
   );
 
+  function refreshConnection() {
+    // Authentication belongs to the app host's new connection handshake.
+    window.location.reload();
+  }
+
   const online = runnerAvailableRef.current
     ? presence.online
     : state.online || presence.online;
@@ -1140,103 +1160,136 @@ export default function PlaygroundPage() {
             : "standalone-room"
       }
     >
-      <div className="pg-world" ref={hostRef} />
+      <div className="pg-scene">
+        <div className="pg-world" ref={hostRef} />
 
-      <header className="pg-topbar">
-        <button
-          type="button"
-          className="pg-menu-open"
-          aria-haspopup="dialog"
-          aria-expanded={menuOpen}
-          onClick={(event) => {
-            event.currentTarget.blur();
-            openMenu("profile");
-          }}
-        >
-          <span aria-hidden="true">☰</span> Menu <kbd>M</kbd>
-        </button>
-      </header>
-
-      <PlazaMenu
-        open={menuOpen}
-        focus={menuFocus}
-        onClose={() => setMenuOpen(false)}
-        identity={
-          viewer
-            ? { displayName: viewer.display_name, animalEmoji: viewer.animal_emoji }
-            : null
-        }
-        canEditIdentity={connected && !runnerAvailableRef.current && !!viewer}
-        connected={connected}
-        onSaveIdentity={saveIdentity}
-        worlds={WORLDS}
-        worldId={worldId}
-        worldOnline={presence.worldOnline}
-        online={online}
-        onEnterWorld={(id) => {
-          setMenuOpen(false);
-          worldRef.current?.enterWorld(id);
-        }}
-        timeOfDay={timeOfDay}
-        onTimeOfDay={setTimeOfDay}
-        lookMode={lookMode}
-      />
-
-      {!runnerBacked && !runnerAvailableRef.current && connected ? (
-        <CoopControls
-          posts={state.order.map((id) => state.posts.get(id)!).filter(Boolean)}
-          participants={[...presence.members.values()]}
-          onFocusChange={(paused) => worldRef.current?.setPaused(paused)}
-        />
-      ) : null}
-
-      <div className="pg-crosshair" aria-hidden="true">
-        +
-      </div>
-
-      {/* Somebody reacted at YOU. Every other reaction floats above its
-          target's head, but the viewer has no avatar of their own in a
-          first-person view, so this is the only place it can appear.
-          `role="status"` so it is announced rather than being a purely
-          visual event a screen-reader user never learns about. */}
-      {presence.selfReaction ? (
-        <div className="pg-self-reaction" role="status">
-          <span className="pg-self-reaction-emoji" aria-hidden="true">
-            {presence.selfReaction.emoji}
-          </span>
-          <span className="pg-self-reaction-from">
-            {presence.selfReaction.from_display_name
-              ? `from ${presence.selfReaction.from_animal_emoji} ${presence.selfReaction.from_display_name}`
-              : "for you"}
-          </span>
-        </div>
-      ) : null}
-
-      {target && !chatting ? (
-        <div className="pg-interaction">
-          <span className="pg-interaction-kind">{targetKindLabel(target)}</span>
-          <strong>{targetTitle(target)}</strong>
+        <header className="pg-topbar">
           <button
             type="button"
-            onClick={() => worldRef.current?.interactWithTarget()}
+            className="pg-menu-open"
+            aria-haspopup="dialog"
+            aria-expanded={menuOpen}
+            onClick={(event) => {
+              event.currentTarget.blur();
+              openMenu("profile");
+            }}
           >
-            {targetActionLabel(target)}
-            <kbd>E</kbd>
+            <span aria-hidden="true">☰</span> Menu <kbd>M</kbd>
           </button>
+        </header>
+
+        <PlazaMenu
+          open={menuOpen}
+          focus={menuFocus}
+          onClose={() => setMenuOpen(false)}
+          identity={
+            viewer
+              ? { displayName: viewer.display_name, animalEmoji: viewer.animal_emoji }
+              : null
+          }
+          canEditIdentity={connected && !runnerAvailableRef.current && !!viewer}
+          connected={connected}
+          onSaveIdentity={saveIdentity}
+          worlds={WORLDS}
+          worldId={worldId}
+          worldOnline={presence.worldOnline}
+          online={online}
+          onEnterWorld={(id) => {
+            setMenuOpen(false);
+            worldRef.current?.enterWorld(id);
+          }}
+          timeOfDay={timeOfDay}
+          onTimeOfDay={setTimeOfDay}
+          lookMode={lookMode}
+        />
+
+        {!runnerBacked && !runnerAvailableRef.current && connected ? (
+          <CoopControls
+            posts={state.order.map((id) => state.posts.get(id)!).filter(Boolean)}
+            participants={[...presence.members.values()]}
+            onFocusChange={(paused) => worldRef.current?.setPaused(paused)}
+          />
+        ) : null}
+
+        {showGuide && !menuOpen ? (
+          <aside className="pg-guide" aria-label="How to explore">
+            <p>Walk around and explore. Meet someone nearby and start a conversation.</p>
+            <p>Use WASD and the mouse, or the touch stick and drag to look around.</p>
+            <button type="button" onClick={dismissGuide}>Got it</button>
+          </aside>
+        ) : null}
+
+        <div className="pg-crosshair" aria-hidden="true">
+          +
         </div>
-      ) : null}
 
-      {!locked && !chatting && !menuOpen ? (
-        <button
-          type="button"
-          className="pg-enter"
-          disabled={!worldReady}
-          onClick={() => worldRef.current?.requestPointerLock()}
-        >
-          {worldReady ? "Click to explore" : "Getting the plaza ready…"}
-        </button>
-      ) : null}
+        {/* Somebody reacted at YOU. Every other reaction floats above its
+            target's head, but the viewer has no avatar of their own in a
+            first-person view, so this is the only place it can appear.
+            `role="status"` so it is announced rather than being a purely
+            visual event a screen-reader user never learns about. */}
+        {presence.selfReaction ? (
+          <div className="pg-self-reaction" role="status">
+            <span className="pg-self-reaction-emoji" aria-hidden="true">
+              {presence.selfReaction.emoji}
+            </span>
+            <span className="pg-self-reaction-from">
+              {presence.selfReaction.from_display_name
+                ? `from ${presence.selfReaction.from_animal_emoji} ${presence.selfReaction.from_display_name}`
+                : "for you"}
+            </span>
+          </div>
+        ) : null}
 
+        {target && !chatting ? (
+          <div className="pg-interaction">
+            <span className="pg-interaction-kind">{targetKindLabel(target)}</span>
+            <strong>{targetTitle(target)}</strong>
+            <button
+              type="button"
+              onClick={() => worldRef.current?.interactWithTarget()}
+            >
+              {targetActionLabel(target)}
+              <kbd>E</kbd>
+            </button>
+          </div>
+        ) : null}
+
+        {!locked && !chatting && !menuOpen ? (
+          <button
+            type="button"
+            className="pg-enter"
+            disabled={!worldReady}
+            onClick={() => worldRef.current?.requestPointerLock()}
+          >
+            {worldReady ? "Click to explore" : "Getting the plaza ready…"}
+          </button>
+        ) : null}
+
+
+        <MobileJoystick onChange={(x, y) => worldRef.current?.setJoystick(x, y)} />
+
+        {/* Act on touch-DOWN, not click: a phone does not synthesize a click
+            for a second finger while the first is on the joystick. */}
+        <div className="pg-actions">
+          <PressButton
+            className={`pg-action pg-action--secondary${crouched ? " pg-action--active" : ""}`}
+            aria-pressed={crouched}
+            aria-label="Crouch"
+            onPress={toggleCrouch}
+          >
+            Crouch
+          </PressButton>
+          <PressButton
+            className="pg-action"
+            aria-label="Jump"
+            onPress={() => worldRef.current?.jump()}
+          >
+            Jump
+          </PressButton>
+        </div>
+
+      </div>
 
       <footer className="pg-bottom">
         {/* Who you are lives in the Menu; the HUD only speaks up when the
@@ -1271,35 +1324,23 @@ export default function PlaygroundPage() {
             >
               Talk<kbd>↵</kbd>
             </button>
-          ) : (
-            <a className="pg-chat-open" href={pwaUrl(SIGN_IN_PATH) ?? SIGN_IN_PATH}>
-              Sign in to talk
-            </a>
-          )}
+          ) : viewer?.signed_in ? (
+            <div className="pg-auth-help">
+              <span>This room does not allow your account to talk.</span>
+              <button type="button" className="pg-chat-open" onClick={refreshConnection}>Reload Plaza</button>
+            </div>
+          ) : viewer ? (
+            <div className="pg-auth-help">
+              <a className="pg-chat-open" href={pwaUrl(SIGN_IN_PATH) ?? SIGN_IN_PATH} target="_blank" rel="noopener noreferrer">
+                Login to talk
+              </a>
+              <span>Uses your ato account.</span>
+              <button type="button" className="pg-auth-refresh" onClick={refreshConnection}>Already logged in? Reload Plaza</button>
+            </div>
+          ) : <span role="status">Connecting to conversation…</span>}
         </div>
       </footer>
 
-      <MobileJoystick onChange={(x, y) => worldRef.current?.setJoystick(x, y)} />
-
-      {/* Act on touch-DOWN, not click: a phone does not synthesize a click
-          for a second finger while the first is on the joystick. */}
-      <div className="pg-actions">
-        <PressButton
-          className={`pg-action${crouched ? " pg-action--active" : ""}`}
-          aria-pressed={crouched}
-          aria-label="Crouch"
-          onPress={toggleCrouch}
-        >
-          Crouch
-        </PressButton>
-        <PressButton
-          className="pg-action"
-          aria-label="Jump"
-          onPress={() => worldRef.current?.jump()}
-        >
-          Jump
-        </PressButton>
-      </div>
 
       {chatting ? (
         <form className="pg-compose" onSubmit={submit}>
