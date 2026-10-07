@@ -19,7 +19,7 @@ export const meadow: WorldDefinition = {
   id: "meadow",
   name: "MEADOW",
   index: 6,
-  tagline: "とりあえず歩き回る。",
+  tagline: "Just wander around.",
   spawn: { x: 0, y: 0, z: 12, yaw: 0 },
   environment: {
     background: "#d6e7bd",

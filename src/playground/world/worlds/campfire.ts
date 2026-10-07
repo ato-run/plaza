@@ -19,7 +19,7 @@ export const campfire: WorldDefinition = {
   id: "campfire",
   name: "CAMPFIRE",
   index: 3,
-  tagline: "火を囲んで、なんとなく話す。",
+  tagline: "Sit around the fire and chat.",
   spawn: { x: 0, y: 0, z: 9, yaw: 0 },
   environment: {
     background: "#1d2433",

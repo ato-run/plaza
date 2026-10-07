@@ -36,7 +36,7 @@ export const CENTRAL_LANTERNS = [
 export const CENTRAL_MASCOTS = [
   {
     id: "cat",
-    name: "ミケ",
+    name: "Calico",
     species: "cat" as const,
     x: -5.4,
     z: 4.6,
@@ -44,7 +44,7 @@ export const CENTRAL_MASCOTS = [
   },
   {
     id: "dog",
-    name: "ソラ",
+    name: "Sora",
     species: "dog" as const,
     x: 3.9,
     z: 4.2,
@@ -52,7 +52,7 @@ export const CENTRAL_MASCOTS = [
   },
   {
     id: "panda",
-    name: "モモ",
+    name: "Momo",
     species: "panda" as const,
     x: -2.2,
     z: -9.4,

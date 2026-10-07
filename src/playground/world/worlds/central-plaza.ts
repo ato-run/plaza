@@ -95,7 +95,7 @@ export const centralPlaza: WorldDefinition = {
   id: "central-plaza",
   name: "CENTRAL PLAZA",
   index: 1,
-  tagline: "まずここへ来れば、誰かいる。",
+  tagline: "Start here. Someone's around.",
   spawn: { x: 0, y: 0, z: 11, yaw: 0 },
   environment: {
     background: "#c8e1e0",
@@ -104,8 +104,8 @@ export const centralPlaza: WorldDefinition = {
     fogFar: 72,
     sky: DAY_SKY,
     timesOfDay: [
-      { id: "day", label: "昼", sky: DAY_SKY },
-      { id: "magic-hour", label: "夕焼け", sky: MAGIC_HOUR_SKY },
+      { id: "day", label: "Day", sky: DAY_SKY },
+      { id: "magic-hour", label: "Sunset", sky: MAGIC_HOUR_SKY },
     ],
   },
   available: true,

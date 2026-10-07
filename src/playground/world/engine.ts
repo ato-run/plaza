@@ -356,7 +356,7 @@ export function createEngine(options: EngineOptions): Engine {
   on(renderer.domElement, "webglcontextlost", (event) => {
     event.preventDefault();
     contextLost = true;
-    options.onError("3D表示が中断されました。ページを再読み込みしてください。");
+    options.onError("The 3D view stopped. Reload the page.");
   });
   on(renderer.domElement, "webglcontextrestored", () => {
     contextLost = false;

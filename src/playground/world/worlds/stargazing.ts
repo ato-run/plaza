@@ -19,7 +19,7 @@ export const stargazing: WorldDefinition = {
   id: "stargazing",
   name: "STARGAZING",
   index: 8,
-  tagline: "夜に、ゆっくり誰かと過ごす。",
+  tagline: "Spend a slow night with someone.",
   spawn: { x: 0, y: 0, z: 7, yaw: 0 },
   environment: {
     background: "#080e2b",

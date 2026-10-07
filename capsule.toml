@@ -14,7 +14,7 @@ root = "."
 ignore = ["node_modules", "dist"]
 
 [metadata]
-short_description = "みんなが集まる一つの広場。歩いて、話して、見つけたものを試す。"
+short_description = "One shared plaza. Walk, talk, and try what you find."
 description = "Ato Plaza is one shared lobby as a first-person 3D world. Each instance hosts its own room: walk, talk to the people near you, and open what you find. Apache-2.0, forkable from Discover."
 license = "Apache-2.0"
 tags = ["social", "3d", "realtime", "static", "oss"]
