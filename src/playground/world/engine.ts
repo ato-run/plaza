@@ -34,6 +34,8 @@ import {
 } from "./worldMath";
 import type { Pose, WorldDefinition, WorldRuntime } from "./types";
 
+export type LookMode = "lock" | "drag";
+
 export interface EngineFrame {
   now: number;
   dt: number;
@@ -45,7 +47,12 @@ export interface EngineFrame {
 
 export interface EngineOptions {
   host: HTMLDivElement;
-  onPointerLockChange(locked: boolean): void;
+  /**
+   * The view was engaged or released. `mode` says how the view is steered:
+   * a locked pointer, or — where the embedding frame forbids pointer lock
+   * (a sandboxed iframe without `allow-pointer-lock`) — dragging.
+   */
+  onPointerLockChange(engaged: boolean, mode: LookMode): void;
   onRequestChat(): void;
   onInteract(): void;
   onReaction(index: number): void;
@@ -149,6 +156,9 @@ export function createEngine(options: EngineOptions): Engine {
   const environment = createEnvironment(renderer, scene, camera, sun, hemisphere);
 
   const keys = new Set<string>();
+  let dragPointer = -1;
+  let dragX = 0;
+  let dragY = 0;
   const joystick = { x: 0, y: 0 };
   const cadence = new SendCadence();
   const teardown: (() => void)[] = [];
@@ -157,6 +167,27 @@ export function createEngine(options: EngineOptions): Engine {
   let pitch = -0.03;
   let paused = false;
   let locked = false;
+  // Engaged without a pointer lock: keys move, dragging looks. Entered when
+  // the lock is refused, and from then on used directly for this page.
+  let dragLook = false;
+  let lockUnavailable = false;
+  const engaged = () => locked || dragLook;
+  const enterDragLook = () => {
+    lockUnavailable = true;
+    if (dragLook || locked) return;
+    dragLook = true;
+    keys.clear();
+    jumpRequested = false;
+    options.onPointerLockChange(true, "drag");
+  };
+  const leaveDragLook = () => {
+    if (!dragLook) return;
+    dragLook = false;
+    dragPointer = -1;
+    keys.clear();
+    jumpRequested = false;
+    options.onPointerLockChange(false, "drag");
+  };
   let raf = 0;
   let lastFrame = performance.now();
   let contextLost = false;
@@ -198,8 +229,9 @@ export function createEngine(options: EngineOptions): Engine {
     // Keys held when the lock breaks would otherwise stick down forever.
     keys.clear();
     jumpRequested = false;
-    options.onPointerLockChange(locked);
+    options.onPointerLockChange(locked, "lock");
   });
+  on(document, "pointerlockerror", enterDragLook);
 
   on(document, "mousemove", (event) => {
     if (!locked || paused) return;
@@ -212,6 +244,10 @@ export function createEngine(options: EngineOptions): Engine {
     const keyboard = event as KeyboardEvent;
     const tag = (keyboard.target as HTMLElement | null)?.tagName;
     if (paused || tag === "INPUT" || tag === "TEXTAREA") return;
+    if (keyboard.key === "Escape" && dragLook) {
+      leaveDragLook();
+      return;
+    }
     if (keyboard.key === "Enter") {
       keyboard.preventDefault();
       keys.clear();
@@ -224,7 +260,7 @@ export function createEngine(options: EngineOptions): Engine {
     }
     if (keyboard.code === "Space") {
       // Jump is edge-triggered; holding Space must not bunny-hop from repeat.
-      if (locked && !keyboard.repeat) {
+      if (engaged() && !keyboard.repeat) {
         keyboard.preventDefault();
         jumpRequested = true;
       }
@@ -236,7 +272,7 @@ export function createEngine(options: EngineOptions): Engine {
       return;
     }
     if (
-      locked &&
+      engaged() &&
       ["KeyW", "KeyA", "KeyS", "KeyD", "KeyC", "ControlLeft"].includes(
         keyboard.code,
       )
@@ -255,18 +291,19 @@ export function createEngine(options: EngineOptions): Engine {
   });
 
   on(renderer.domElement, "click", () => {
-    if (!paused && !locked) engine.requestPointerLock();
+    if (!paused && !engaged()) engine.requestPointerLock();
   });
 
-  // Touch look. Only the right side drags the view, so it cannot fight the
-  // joystick living on the left.
-  let dragPointer = -1;
-  let dragX = 0;
-  let dragY = 0;
+  // Touch look, and mouse look when the pointer cannot be locked. Touch drags
+  // only on the right side, so it cannot fight the joystick on the left.
   on(renderer.domElement, "pointerdown", (event) => {
     const pointer = event as PointerEvent;
-    if (pointer.pointerType === "mouse" || paused) return;
-    if (pointer.clientX < window.innerWidth * 0.4) return;
+    if (paused) return;
+    if (pointer.pointerType === "mouse") {
+      if (!dragLook || pointer.button !== 0) return;
+    } else if (pointer.clientX < window.innerWidth * 0.4) {
+      return;
+    }
     dragPointer = pointer.pointerId;
     dragX = pointer.clientX;
     dragY = pointer.clientY;
@@ -472,22 +509,26 @@ export function createEngine(options: EngineOptions): Engine {
     requestPointerLock() {
       // Touch devices have no pointer to lock; drag-look is the equivalent.
       if (window.matchMedia?.("(pointer: coarse)").matches) return;
+      // A frame that forbids the lock (sandbox without allow-pointer-lock)
+      // refuses every request; steer by dragging instead of failing again.
+      if (lockUnavailable || typeof renderer.domElement.requestPointerLock !== "function") {
+        enterDragLook();
+        return;
+      }
       try {
         const result = renderer.domElement.requestPointerLock() as
           | Promise<void>
           | undefined;
-        result?.catch?.(() =>
-          options.onError(
-            "視点操作を開始するには、画面をもう一度クリックしてください。",
-          ),
-        );
+        result?.catch?.(enterDragLook);
       } catch {
-        options.onError("このブラウザではマウス固定を利用できません。");
+        enterDragLook();
       }
     },
 
     setPaused(next) {
       paused = next;
+      // Chat takes the keyboard; the drag view resumes with the next request.
+      if (next) leaveDragLook();
       keys.clear();
       jumpRequested = false;
       joystick.x = 0;

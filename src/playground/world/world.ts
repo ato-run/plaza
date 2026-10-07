@@ -24,7 +24,7 @@ import {
   receiveTransform,
   type Avatar,
 } from "./avatar";
-import { createEngine, type Engine } from "./engine";
+import { createEngine, type Engine, type LookMode } from "./engine";
 import {
   addExhibit,
   EXHIBIT_OBSTACLE_RADIUS,
@@ -54,7 +54,7 @@ export interface WorldTransformReport {
 }
 
 export interface WorldHooks {
-  onPointerLockChange(locked: boolean): void;
+  onPointerLockChange(engaged: boolean, mode: LookMode): void;
   onTargetChange(target: WorldTarget | null): void;
   /** ~12Hz, already throttled. */
   onTransform(transform: WorldTransformReport): void;

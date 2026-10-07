@@ -153,6 +153,7 @@ export default function PlaygroundPage() {
   const [presence, setPresence] = useState<PresenceState>(createPresenceState);
   const [target, setTarget] = useState<WorldTarget | null>(null);
   const [locked, setLocked] = useState(false);
+  const [lookMode, setLookMode] = useState<"lock" | "drag">("lock");
   const [chatting, setChatting] = useState(false);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -768,7 +769,10 @@ export default function PlaygroundPage() {
     let world: WorldHandle;
     try {
       world = startWorld(host, {
-        onPointerLockChange: setLocked,
+        onPointerLockChange: (engaged, mode) => {
+          setLocked(engaged);
+          setLookMode(mode);
+        },
         onTargetChange: setTarget,
         onTransform: (transform) => {
           if (runnerAvailableRef.current) {
@@ -1203,7 +1207,7 @@ export default function PlaygroundPage() {
           <span>
             <kbd>C</kbd> しゃがむ
           </span>
-          <span>マウス 視点</span>
+          <span>{lookMode === "drag" ? "ドラッグ 視点" : "マウス 視点"}</span>
           <span>
             <kbd>esc</kbd> 解除
           </span>
