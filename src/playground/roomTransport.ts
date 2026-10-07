@@ -64,6 +64,8 @@ export type AppRoomMessage =
       high_water_cursor: number;
       min_available_cursor: number;
     }
+  | { kind: "identity"; accepted: boolean; self: import("./roomProtocol").AppRoomParticipant }
+  | { kind: "participant"; participant: import("./roomProtocol").AppRoomParticipant }
   | { kind: "checkpoint_requested" }
   | { kind: "reset"; room_epoch: number };
 
@@ -200,6 +202,14 @@ export class AppRoomTransport {
 
   get connected(): boolean {
     return this.socket?.readyState === WebSocket.OPEN;
+  }
+
+  /** Choose this participant's room name and animal (validated by the room). */
+  sendIdentity(displayName: string, animalEmoji: string): void {
+    this.send({
+      type: "identity",
+      payload: { display_name: displayName, animal_emoji: animalEmoji },
+    });
   }
 
   sendPresence(payload: { type: string; typing?: boolean }): void {
