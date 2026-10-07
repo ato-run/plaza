@@ -81,6 +81,8 @@ export interface WorldHandle {
   jump(): void;
   /** Touch crouch toggle. Keyboard holds C / Control. */
   setCrouching(crouching: boolean): void;
+  /** Lighting mood for this viewer only; see `WorldEnvironment.timesOfDay`. */
+  setTimeOfDay(id: string | null): void;
   /** Move to another World. Unavailable ids fall back to the default. */
   enterWorld(worldId: WorldId): void;
   currentWorld(): WorldId;
@@ -252,6 +254,7 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
     setJoystick: (x, y) => engine.setJoystick(x, y),
     jump: () => engine.jump(),
     setCrouching: (crouching) => engine.setCrouching(crouching),
+    setTimeOfDay: (id) => engine.setTimeOfDay(id),
     currentWorld: () => worldId,
 
     enterWorld(next) {

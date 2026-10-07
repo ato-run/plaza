@@ -45,7 +45,45 @@ import {
   updateMascotBubble,
   type Mascot,
 } from "../mascot";
-import type { Interactable, WorldDefinition, WorldRuntime } from "../types";
+import type { Interactable, WorldDefinition, WorldRuntime, WorldSky } from "../types";
+
+/**
+ * Late morning over the sea: the sun stands north-west, ahead and to the
+ * left of the entrance, so the glitter lies across the water in view.
+ */
+const DAY_SKY: WorldSky = {
+  sunDirection: [-0.62, 0.55, -0.56],
+  sunColor: "#fff2dc",
+  sunIntensity: 3.1,
+  zenith: "#3f7fd0",
+  horizon: "#abcae0",
+  ground: "#c2ae8a",
+  hazeDensity: 0.0042,
+  far: 900,
+  exposure: 0.9,
+  environmentIntensity: 1,
+  clouds: 0.5,
+};
+
+/**
+ * Magic hour: the sun a few degrees above the sea, slightly left of the
+ * entrance's view, so the path of light on the water runs toward you.
+ */
+const MAGIC_HOUR_SKY: WorldSky = {
+  sunDirection: [-0.7, 0.07, -0.71],
+  sunColor: "#ffa04a",
+  sunIntensity: 2.6,
+  // Gold at the horizon into deep blue, not mauve: no pink stop between.
+  zenith: "#2c5c9c",
+  horizon: "#f7b469",
+  ground: "#8a6a4e",
+  sunDisc: 1.6,
+  hazeDensity: 0.0046,
+  far: 900,
+  exposure: 1.1,
+  environmentIntensity: 1.05,
+  clouds: 0.6,
+};
 
 export const centralPlaza: WorldDefinition = {
   id: "central-plaza",
@@ -58,21 +96,11 @@ export const centralPlaza: WorldDefinition = {
     fog: "#c8e1e0",
     fogNear: 26,
     fogFar: 72,
-    // Late morning over the sea: the sun stands north-west, ahead and to the
-    // left of the entrance, so the glitter lies across the water in view.
-    sky: {
-      sunDirection: [-0.62, 0.55, -0.56],
-      sunColor: "#fff2dc",
-      sunIntensity: 3.1,
-      zenith: "#3f7fd0",
-      horizon: "#abcae0",
-      ground: "#c2ae8a",
-      hazeDensity: 0.0042,
-      far: 900,
-      exposure: 0.9,
-      environmentIntensity: 1,
-      clouds: 0.5,
-    },
+    sky: DAY_SKY,
+    timesOfDay: [
+      { id: "day", label: "昼", sky: DAY_SKY },
+      { id: "magic-hour", label: "夕焼け", sky: MAGIC_HOUR_SKY },
+    ],
   },
   available: true,
 

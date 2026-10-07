@@ -82,6 +82,19 @@ export interface WorldEnvironment {
    * fog and fixed lights above, which is what an unbuilt World still uses.
    */
   sky?: WorldSky;
+  /**
+   * Other lighting moods for the same place, chosen per viewer (never
+   * synchronised: the light is how you see the room, not part of it). The
+   * first entry should be `sky` itself.
+   */
+  timesOfDay?: readonly TimeOfDay[];
+}
+
+export interface TimeOfDay {
+  id: string;
+  /** Shown on the switch, short: "昼", "夕焼け". */
+  label: string;
+  sky: WorldSky;
 }
 
 /**
@@ -106,6 +119,11 @@ export interface WorldSky {
   environmentIntensity: number;
   /** Cloud cover in the visible dome, 0–1. */
   clouds: number;
+  /**
+   * Brightness of the visible disc, relative to the light. Low suns read as
+   * a coloured disc only when this is small enough not to clip to white.
+   */
+  sunDisc?: number;
 }
 
 /**

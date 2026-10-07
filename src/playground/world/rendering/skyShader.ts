@@ -28,12 +28,27 @@ uniform vec3 uGround;
 // Sky radiance seen along a unit direction, without the sun's disc.
 vec3 skyRadiance(vec3 dir) {
   float up = clamp(dir.y, 0.0, 1.0);
-  vec3 sky = mix(uHorizon, uZenith, pow(up, 0.45));
+  // With the sun low, the horizon away from it cools toward the zenith hue
+  // (the pink-violet band opposite a sunset); at midday this all but vanishes.
+  vec2 flatDir = normalize(dir.xz + 1e-5);
+  vec2 flatSun = normalize(uSunDirection.xz + 1e-5);
+  float toward = 0.5 + 0.5 * dot(flatDir, flatSun);
+  float lowSun = 1.0 - smoothstep(0.08, 0.5, uSunDirection.y);
+  vec3 horizon = mix(mix(uHorizon, uZenith * 1.6, 0.45), uHorizon, mix(1.0, toward, lowSun * 0.85));
+  vec3 daySky = mix(horizon, uZenith, pow(up, 0.45));
+  // A low sun's sky does not blend gold straight into blue (that reads as
+  // mauve): the gold band gives way to pale blue, then deepens overhead.
+  vec3 paleBlue = uZenith * 2.4 + vec3(0.06, 0.08, 0.1);
+  vec3 upper = mix(paleBlue, uZenith, smoothstep(0.2, 0.85, up));
+  vec3 duskSky = mix(horizon, upper, smoothstep(0.0, 0.45, pow(up, 0.7)));
+  vec3 sky = mix(daySky, duskSky, lowSun);
   // A brighter band of haze sits on the horizon in a clear tropical sky.
-  sky += uHorizon * 0.12 * exp(-up * 16.0);
+  sky += horizon * 0.12 * exp(-up * 16.0);
   float mu = max(dot(dir, uSunDirection), 0.0);
   // Forward scattering around the sun: a wide halo and a tight glow.
   sky += uSunColor * (0.035 * pow(mu, 3.0) + 0.16 * pow(mu, 48.0));
+  // A sun near the horizon shines through far more air: a wide warm glow.
+  sky += uSunColor * lowSun * (0.12 * pow(mu, 10.0) + 0.5 * pow(mu, 180.0));
   // Below the horizon only the lighting and the fog ever look: haze over sand.
   float down = clamp(-dir.y, 0.0, 1.0);
   return mix(sky, uGround, smoothstep(0.0, 0.3, down));
@@ -89,13 +104,15 @@ void main() {
     vec2 layer = dir.xz / (dir.y + 0.08) * 1.4;
     float density = smoothstep(0.52, 0.78, fbm(layer + vec2(3.1, 7.7)));
     density *= smoothstep(0.0, 0.12, dir.y) * uClouds;
-    float lit = 0.75 + 0.35 * max(dot(dir, uSunDirection), 0.0);
-    vec3 cloud = mix(uHorizon * 1.15, vec3(1.0) * (uSunColor.r * 0.3 + 0.55), 0.6) * lit;
+    // Lit by the sun's own colour (white at noon, orange at dusk) over the
+    // sky's ambient, brightest toward the sun.
+    float mu = max(dot(dir, uSunDirection), 0.0);
+    vec3 cloud = (uZenith * 0.35 + uHorizon * 0.55) + uSunColor * (0.1 + 0.18 * mu * mu);
     color = mix(color, cloud, density * 0.85);
   }
-  float mu = dot(dir, uSunDirection);
+  float sunAngle = dot(dir, uSunDirection);
   // The disc itself, HDR so tone mapping rolls it off rather than clipping.
-  color += uSunColor * uSunDisc * smoothstep(0.99985, 0.99993, mu);
+  color += uSunColor * uSunDisc * smoothstep(0.99985, 0.99993, sunAngle);
   gl_FragColor = vec4(color, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>

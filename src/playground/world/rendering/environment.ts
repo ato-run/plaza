@@ -12,7 +12,13 @@ import type { WorldEnvironment, WorldLighting, WorldSky } from "../types";
 import { createSkyDome, createSkyUniforms } from "./skyShader";
 
 export interface EnvironmentController {
-  apply(environment: WorldEnvironment): WorldLighting;
+  /** Set up a World's environment, in the given time of day if it has one. */
+  apply(environment: WorldEnvironment, timeOfDay?: string | null): WorldLighting;
+  /**
+   * Change the light of the mounted World in place: same uniforms, same
+   * lighting handle, one re-bake. Materials that captured the sky follow.
+   */
+  retune(sky: WorldSky): void;
   /** Release the current World's sky, environment map and fog. */
   clear(): void;
   /** Re-render GPU-only results after a lost context comes back. */
@@ -59,26 +65,21 @@ export function createEnvironment(
     environmentMap.value = target.texture;
   }
 
-  function useSky(sky: WorldSky): WorldLighting {
+  function tune(sky: WorldSky): void {
     const direction = new THREE.Vector3(...sky.sunDirection).normalize();
     uniforms.uSunDirection.value.copy(direction);
     uniforms.uSunColor.value.set(sky.sunColor).multiplyScalar(sky.sunIntensity);
     uniforms.uZenith.value.set(sky.zenith);
     uniforms.uHorizon.value.set(sky.horizon);
     uniforms.uGround.value.set(sky.ground);
-
-    dome = createSkyDome(uniforms, { sunDisc: 40, clouds: sky.clouds });
-    dome.onBeforeRender = () => {
-      dome?.position.copy(camera.position);
-      dome?.updateMatrixWorld();
-    };
-    scene.add(dome);
-    scene.background = null;
+    if (dome) {
+      dome.material.uniforms.uClouds.value = sky.clouds;
+      dome.material.uniforms.uSunDisc.value = sky.sunDisc ?? 40;
+    }
     // Distant land fades into the horizon colour; water does its own haze
     // per azimuth from the same sky function.
     const haze = uniforms.uHorizon.value.clone().multiplyScalar(1.12);
     scene.fog = new THREE.FogExp2(haze, sky.hazeDensity);
-
     bake(sky);
     scene.environmentIntensity = sky.environmentIntensity;
     // The IBL carries the sky's fill now; a fixed hemisphere on top of it
@@ -93,6 +94,17 @@ export function createEnvironment(
     camera.far = sky.far;
     camera.updateProjectionMatrix();
     current = sky;
+  }
+
+  function useSky(sky: WorldSky): WorldLighting {
+    dome = createSkyDome(uniforms, { sunDisc: 40, clouds: sky.clouds });
+    dome.onBeforeRender = () => {
+      dome?.position.copy(camera.position);
+      dome?.updateMatrixWorld();
+    };
+    scene.add(dome);
+    scene.background = null;
+    tune(sky);
     return {
       sky: uniforms,
       environment: environmentMap,
@@ -115,9 +127,16 @@ export function createEnvironment(
   }
 
   return {
-    apply(environment) {
+    apply(environment, timeOfDay) {
       this.clear();
-      return environment.sky ? useSky(environment.sky) : useFlat(environment);
+      const sky =
+        environment.timesOfDay?.find((entry) => entry.id === timeOfDay)?.sky ??
+        environment.sky;
+      return sky ? useSky(sky) : useFlat(environment);
+    },
+
+    retune(sky) {
+      if (dome) tune(sky);
     },
 
     clear() {

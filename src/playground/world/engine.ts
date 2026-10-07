@@ -75,6 +75,11 @@ export interface Engine {
   setJoystick(x: number, y: number): void;
   /** Touch jump button (keyboard uses Space). Ignored while paused. */
   jump(): void;
+  /**
+   * Light the place as this time of day (an id from the World's
+   * `timesOfDay`); kept across World switches, ignored by Worlds without it.
+   */
+  setTimeOfDay(id: string | null): void;
   /** Touch crouch toggle. ORed with the held C / Control keys. */
   setCrouching(crouching: boolean): void;
   /** Screen position for a world point, or null when off-screen/behind. */
@@ -203,6 +208,7 @@ export function createEngine(options: EngineOptions): Engine {
   /** Dev harness only: a pinned World clock for same-frame comparisons. */
   let devClock: number | null = null;
   let mountedDefinition: WorldDefinition | null = null;
+  let timeOfDay: string | null = null;
 
   let world: WorldRuntime | null = null;
   /** Fires when the current World is unmounted; its late loads must stop. */
@@ -461,7 +467,7 @@ export function createEngine(options: EngineOptions): Engine {
       unmountWorld();
 
       mountedDefinition = definition;
-      const lighting = environment.apply(definition.environment);
+      const lighting = environment.apply(definition.environment, timeOfDay);
       const abort = new AbortController();
       worldAbort = abort;
 
@@ -545,6 +551,14 @@ export function createEngine(options: EngineOptions): Engine {
 
     jump() {
       if (!paused) jumpRequested = true;
+    },
+
+    setTimeOfDay(id) {
+      timeOfDay = id;
+      const entry = mountedDefinition?.environment.timesOfDay?.find(
+        (candidate) => candidate.id === id,
+      );
+      if (entry) environment.retune(entry.sky);
     },
 
     setCrouching(crouching) {
