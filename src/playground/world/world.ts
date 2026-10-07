@@ -59,6 +59,7 @@ export interface WorldHooks {
   /** ~12Hz, already throttled. */
   onTransform(transform: WorldTransformReport): void;
   onRequestChat(): void;
+  onRequestMenu?(): void;
   onInteract(target: WorldTarget): void;
   onFaceReaction(targetPrincipalId: string, emoji: string): void;
   onWorldChange(worldId: WorldId): void;
@@ -115,6 +116,7 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
     host,
     onPointerLockChange: hooks.onPointerLockChange,
     onRequestChat: hooks.onRequestChat,
+    onRequestMenu: () => hooks.onRequestMenu?.(),
     onInteract: () => handle.interactWithTarget(),
     onReaction: (index) =>
       handle.reactAtTarget(["👋", "❤️", "😂", "👍"][index]),
@@ -218,25 +220,43 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
       hooks.onTargetChange(currentTarget);
     }
 
-    // Project each label to screen space.
+    // Project each label to screen space: people, and the World's own
+    // (mascots). Kept inside the view so a speech bubble near an edge is
+    // shifted in rather than cut off.
     for (const avatar of avatars.values()) {
       const anchor = avatar.group.position.clone();
       anchor.y += labelHeightForPose(avatar.pose);
-      const placed = engine.project(anchor);
-      const style = avatar.label.style;
-      if (!placed) {
-        style.display = "none";
-        continue;
-      }
-      style.display = "flex";
-      style.left = `${placed.left}px`;
-      style.top = `${placed.top}px`;
-      // Near speakers read clearly; distant ones fade rather than clutter.
-      style.opacity = String(
-        placed.distance < 7 ? 1 : Math.max(0.15, 1 - (placed.distance - 7) / 13),
-      );
+      placeLabel(avatar.label, anchor);
+    }
+    for (const label of engine.world?.labels ?? []) {
+      placeLabel(label.element, label.position);
     }
   });
+
+  function placeLabel(element: HTMLElement, anchor: THREE.Vector3): void {
+    const placed = engine.project(anchor);
+    const style = element.style;
+    if (!placed) {
+      style.display = "none";
+      return;
+    }
+    style.display = "flex";
+    const margin = 8;
+    const halfWidth = element.offsetWidth / 2;
+    const width = host.clientWidth;
+    const left =
+      halfWidth * 2 + margin * 2 >= width
+        ? width / 2
+        : Math.min(Math.max(placed.left, halfWidth + margin), width - halfWidth - margin);
+    // The label hangs above its anchor (translate -100%); keep its top edge in.
+    const top = Math.max(placed.top, element.offsetHeight + margin);
+    style.left = `${left}px`;
+    style.top = `${top}px`;
+    // Near speakers read clearly; distant ones fade rather than clutter.
+    style.opacity = String(
+      placed.distance < 7 ? 1 : Math.max(0.15, 1 - (placed.distance - 7) / 13),
+    );
+  }
 
   const handle: WorldHandle = {
     dispose() {
