@@ -23,6 +23,20 @@
   /* Phones with a notch: keep the HUD out from under it. */
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
     env(safe-area-inset-bottom) env(safe-area-inset-left);
+  /* A game view, not a document: dragging to look, double-clicking or a
+     long press must not paint text selection, callouts or tap flashes over
+     the HUD. Fields people type into opt back in below. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pg input,
+.pg textarea {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
 }
 
 .pg-world {
