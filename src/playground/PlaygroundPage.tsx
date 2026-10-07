@@ -1,3 +1,4 @@
+import { PlazaMenu, type MenuSection } from "./PlazaMenu";
 import { CoopControls } from "./coop/CoopControls";
 /**
  * Playground — one global Lobby (`global-v1`), as a first-person world.
@@ -150,6 +151,22 @@ function targetActionLabel(target: WorldTarget): string {
 
 /** localStorage key for the viewer's chosen time of day. */
 const TIME_OF_DAY_KEY = "plaza.timeOfDay";
+/** localStorage key for the name and animal this viewer chose. */
+const IDENTITY_KEY = "plaza.identity";
+
+function storedIdentity(): { display_name: string; animal_emoji: string } | null {
+  try {
+    const raw = window.localStorage.getItem(IDENTITY_KEY);
+    const value = raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
+    return value &&
+      typeof value.display_name === "string" &&
+      typeof value.animal_emoji === "string"
+      ? { display_name: value.display_name, animal_emoji: value.animal_emoji }
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 export default function PlaygroundPage() {
   const [state, setState] = useState<PlaygroundState>(createPlaygroundState);
@@ -171,7 +188,15 @@ export default function PlaygroundPage() {
   const [connected, setConnected] = useState(false);
   const [worldReady, setWorldReady] = useState(false);
   const [worldId, setWorldId] = useState<WorldId>(DEFAULT_WORLD_ID);
-  const [selectorOpen, setSelectorOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuFocus, setMenuFocus] = useState<MenuSection>("profile");
+  const openMenu = useCallback((section: MenuSection) => {
+    setMenuFocus(section);
+    setMenuOpen(true);
+  }, []);
+  const identityTimeoutRef = useRef<number | undefined>(undefined);
+  const openMenuRef = useRef(openMenu);
+  openMenuRef.current = openMenu;
   const [crouched, setCrouched] = useState(false);
   const [runnerBacked, setRunnerBacked] = useState(false);
   const [controllerPresentation, setControllerPresentation] = useState<{
@@ -619,6 +644,29 @@ export default function PlaygroundPage() {
       onMessage: (message: AppRoomMessage) => {
         const now = performance.now();
         switch (message.kind) {
+          case "identity":
+            window.clearTimeout(identityTimeoutRef.current);
+            // What the room now calls you — also after a refused change.
+            setState((current) =>
+              current.viewer
+                ? {
+                    ...current,
+                    viewer: {
+                      ...current.viewer,
+                      display_name: message.self.display_name,
+                      animal_emoji: message.self.animal_emoji,
+                    },
+                  }
+                : current,
+            );
+            if (!message.accepted) setError("That name couldn't be used. Try another.");
+            break;
+          case "participant":
+            if (runnerAvailableRef.current) break;
+            setPresence((current) =>
+              applyJoin(current, toParticipant(message.participant), current.online, now),
+            );
+            break;
           case "hello":
             helloRef.current = message;
             setConnected(true);
@@ -633,6 +681,19 @@ export default function PlaygroundPage() {
             }));
             setState((current) => setOnline(current, message.online));
             void loadRoom();
+            {
+              // The room assigns a fresh pseudonym per connection; a name
+              // this viewer chose is re-applied each time.
+              const chosen = storedIdentity();
+              if (
+                chosen &&
+                !runnerAvailableRef.current &&
+                (chosen.display_name !== message.self.display_name ||
+                  chosen.animal_emoji !== message.self.animal_emoji)
+              ) {
+                transportRef.current?.sendIdentity(chosen.display_name, chosen.animal_emoji);
+              }
+            }
             break;
           case "snapshot":
             if (runnerAvailableRef.current) break;
@@ -827,6 +888,7 @@ export default function PlaygroundPage() {
           );
         },
         onRequestChat: () => setChatting(true),
+        onRequestMenu: () => openMenuRef.current("profile"),
         onInteract: (item) => {
           if (item.kind === "person") {
             setChatting(true);
@@ -970,13 +1032,17 @@ export default function PlaygroundPage() {
   // Chat and pointer lock are mutually exclusive: a locked pointer swallows
   // the keystrokes the composer needs.
   useEffect(() => {
-    worldRef.current?.setPaused(chatting);
+    if (menuOpen) document.exitPointerLock?.();
+  }, [menuOpen]);
+
+  useEffect(() => {
+    worldRef.current?.setPaused(chatting || menuOpen);
     if (chatting) {
       document.exitPointerLock?.();
       const handle = window.setTimeout(() => inputRef.current?.focus(), 30);
       return () => window.clearTimeout(handle);
     }
-  }, [chatting]);
+  }, [chatting, menuOpen]);
 
   useEffect(() => {
     worldRef.current?.setTimeOfDay(timeOfDay);
@@ -991,6 +1057,24 @@ export default function PlaygroundPage() {
   const viewer = state.viewer;
   const canPost = viewer?.can_post === true;
   const remaining = TEXT_LIMIT - [...draft].length;
+
+  const saveIdentity = useCallback((displayName: string, animalEmoji: string) => {
+    try {
+      window.localStorage.setItem(
+        IDENTITY_KEY,
+        JSON.stringify({ display_name: displayName, animal_emoji: animalEmoji }),
+      );
+    } catch {
+      // Remembering is a convenience; the change still applies to this visit.
+    }
+    transportRef.current?.sendIdentity(displayName, animalEmoji);
+    // A room that predates name changes never answers; say so rather than
+    // leaving Save looking like it worked.
+    window.clearTimeout(identityTimeoutRef.current);
+    identityTimeoutRef.current = window.setTimeout(() => {
+      setError("Name changes aren't available in this room yet.");
+    }, 4000);
+  }, []);
 
   const closeChat = useCallback(() => {
     setChatting(false);
@@ -1037,7 +1121,6 @@ export default function PlaygroundPage() {
   const online = runnerAvailableRef.current
     ? presence.online
     : state.online || presence.online;
-  const world = WORLDS.find((entry) => entry.id === worldId) ?? WORLDS[0];
 
   return (
     <main
@@ -1053,109 +1136,44 @@ export default function PlaygroundPage() {
       <div className="pg-world" ref={hostRef} />
 
       <header className="pg-topbar">
-        <span className="pg-brand">
-          ato<span className="pg-brand-dot">.</span>
-          <span className="pg-brand-sub">plaza</span>
-        </span>
-        {world.environment.timesOfDay ? (
-          <div className="pg-time" role="group" aria-label="Time of day">
-            {world.environment.timesOfDay.map((entry, index) => {
-              const active = (timeOfDay ?? world.environment.timesOfDay?.[0]?.id) === entry.id;
-              return (
-                <button
-                  key={entry.id}
-                  type="button"
-                  aria-pressed={active}
-                  className={active ? "pg-time-on" : undefined}
-                  onClick={(event) => {
-                    // Drop focus so Space keeps meaning "jump", not "toggle".
-                    event.currentTarget.blur();
-                    setTimeOfDay(index === 0 ? null : entry.id);
-                  }}
-                >
-                  {entry.label}
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
         <button
           type="button"
-          className="pg-room"
+          className="pg-menu-open"
           aria-haspopup="dialog"
-          aria-expanded={selectorOpen}
-          onClick={() => setSelectorOpen((open) => !open)}
+          aria-expanded={menuOpen}
+          onClick={(event) => {
+            event.currentTarget.blur();
+            openMenu("profile");
+          }}
         >
-          <span
-            className={`pg-live${
-              (runnerAvailableRef.current ? runnerBacked : connected)
-                ? ""
-                : " pg-live--off"
-            }`}
-            aria-hidden="true"
-          />
-          {world.name}
-          <span className="pg-room-index">
-            {String(world.index).padStart(2, "0")}
-          </span>
-          <span className="pg-room-count">{online}</span>
+          <span aria-hidden="true">☰</span> Menu <kbd>M</kbd>
         </button>
       </header>
 
-      {selectorOpen ? (
-        <>
-          {/* A full-screen backdrop, so clicking the world dismisses the
-              panel instead of walking while it is open. */}
-          <button
-            type="button"
-            className="pg-selector-backdrop"
-            aria-label="Close"
-            onClick={() => setSelectorOpen(false)}
-          />
-          <div className="pg-selector" role="dialog" aria-label="Choose a world">
-            <h2>Worlds</h2>
-            <ul>
-              {WORLDS.map((definition) => {
-                const count = presence.worldOnline[definition.id];
-                const here = definition.id === worldId;
-                return (
-                  <li key={definition.id}>
-                    <button
-                      type="button"
-                      className={`pg-selector-item${here ? " pg-selector-item--here" : ""}`}
-                      disabled={!definition.available || here}
-                      onClick={() => {
-                        setSelectorOpen(false);
-                        worldRef.current?.enterWorld(definition.id);
-                      }}
-                    >
-                      <span className="pg-selector-index">
-                        {String(definition.index).padStart(2, "0")}
-                      </span>
-                      <span className="pg-selector-body">
-                        <strong>{definition.name}</strong>
-                        <small>{definition.tagline}</small>
-                      </span>
-                      <span className="pg-selector-count">
-                        {!definition.available
-                          ? "Coming soon"
-                          : here
-                            ? "You are here"
-                            : /* An absent count is not zero: a server that has
-                                 not shipped per-World counts yet would
-                                 otherwise report every World as empty. */
-                              typeof count === "number"
-                              ? `${count} here`
-                              : "—"}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        </>
-      ) : null}
+      <PlazaMenu
+        open={menuOpen}
+        focus={menuFocus}
+        onClose={() => setMenuOpen(false)}
+        identity={
+          viewer
+            ? { displayName: viewer.display_name, animalEmoji: viewer.animal_emoji }
+            : null
+        }
+        canEditIdentity={connected && !runnerAvailableRef.current && !!viewer}
+        connected={connected}
+        onSaveIdentity={saveIdentity}
+        worlds={WORLDS}
+        worldId={worldId}
+        worldOnline={presence.worldOnline}
+        online={online}
+        onEnterWorld={(id) => {
+          setMenuOpen(false);
+          worldRef.current?.enterWorld(id);
+        }}
+        timeOfDay={timeOfDay}
+        onTimeOfDay={setTimeOfDay}
+        lookMode={lookMode}
+      />
 
       {!runnerBacked && !runnerAvailableRef.current && connected ? (
         <CoopControls
@@ -1201,7 +1219,7 @@ export default function PlaygroundPage() {
         </div>
       ) : null}
 
-      {!locked && !chatting ? (
+      {!locked && !chatting && !menuOpen ? (
         <button
           type="button"
           className="pg-enter"
@@ -1212,62 +1230,46 @@ export default function PlaygroundPage() {
         </button>
       ) : null}
 
-      <div className="pg-reactions" role="group" aria-label="Reactions">
-        {PLAYGROUND_FACE_REACTIONS.map((emoji, index) => (
-          <button
-            key={emoji}
-            type="button"
-            title={`${index + 1} · React to the person you're facing`}
-            disabled={!canPost}
-            onClick={() => worldRef.current?.reactAtTarget(emoji)}
-          >
-            <span aria-hidden="true">{emoji}</span>
-            <kbd>{index + 1}</kbd>
-          </button>
-        ))}
-      </div>
 
       <footer className="pg-bottom">
-        <div className="pg-identity">
-          <span className="pg-identity-emoji" aria-hidden="true">
-            {viewer?.animal_emoji ?? "…"}
-          </span>
-          <div>
-            <strong>{viewer?.display_name ?? "Connecting"}</strong>
-            <small>{connected ? "In the plaza" : "Reconnecting…"}</small>
+        {/* Who you are lives in the Menu; the HUD only speaks up when the
+            connection is not there. */}
+        {connected ? null : (
+          <div className="pg-connection" role="status">
+            {viewer ? "Reconnecting…" : "Connecting…"}
           </div>
-        </div>
-        <div className="pg-keys" aria-hidden="true">
-          <span>
-            <kbd>W</kbd>
-            <kbd>A</kbd>
-            <kbd>S</kbd>
-            <kbd>D</kbd> Move
-          </span>
-          <span>
-            <kbd>Space</kbd> Jump
-          </span>
-          <span>
-            <kbd>C</kbd> Crouch
-          </span>
-          <span>{lookMode === "drag" ? "Drag Look" : "Mouse Look"}</span>
-          <span>
-            <kbd>esc</kbd> Release
-          </span>
-        </div>
-        {canPost ? (
-          <button
-            type="button"
-            className="pg-chat-open"
-            onClick={() => setChatting(true)}
-          >
-            Talk<kbd>↵</kbd>
-          </button>
-        ) : (
-          <a className="pg-chat-open" href={pwaUrl(SIGN_IN_PATH) ?? SIGN_IN_PATH}>
-            Sign in to talk
-          </a>
         )}
+        {/* Everything you say to people, in one place: reactions to whoever
+            you face, and the message composer. */}
+        <div className="pg-talk">
+          <div className="pg-reactions" role="group" aria-label="Reactions">
+            {PLAYGROUND_FACE_REACTIONS.map((emoji, index) => (
+              <button
+                key={emoji}
+                type="button"
+                title={`${index + 1} · React to the person you're facing`}
+                disabled={!canPost}
+                onClick={() => worldRef.current?.reactAtTarget(emoji)}
+              >
+                <span aria-hidden="true">{emoji}</span>
+                <kbd>{index + 1}</kbd>
+              </button>
+            ))}
+          </div>
+          {canPost ? (
+            <button
+              type="button"
+              className="pg-chat-open"
+              onClick={() => setChatting(true)}
+            >
+              Talk<kbd>↵</kbd>
+            </button>
+          ) : (
+            <a className="pg-chat-open" href={pwaUrl(SIGN_IN_PATH) ?? SIGN_IN_PATH}>
+              Sign in to talk
+            </a>
+          )}
+        </div>
       </footer>
 
       <MobileJoystick onChange={(x, y) => worldRef.current?.setJoystick(x, y)} />

@@ -271,6 +271,15 @@ export const centralPlaza: WorldDefinition = {
       // middle and the boards are still the first thing beyond it.
       softwareSlots: CENTRAL_SOFTWARE_SLOTS,
 
+      labels: mascots.map((mascot) => ({
+        element: mascot.label,
+        position: new THREE.Vector3(
+          mascot.group.position.x,
+          mascot.baseY + 0.15,
+          mascot.group.position.z,
+        ),
+      })),
+
       // The plaza is flat at 0; beyond it people may walk the beach down
       // into the shallows, slower once the water is above the ankles.
       walkable: beachWalkable,

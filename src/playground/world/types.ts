@@ -216,6 +216,12 @@ export interface WorldRuntime {
    * advertising an App after it stopped being public.
    */
   softwareSlots?: SoftwareSlot[];
+  /**
+   * DOM labels the World owns (mascot name tags and speech), with the world
+   * point each hangs above. The engine positions them every frame, like the
+   * people's labels; the World only creates and removes them.
+   */
+  labels?: { element: HTMLElement; position: THREE.Vector3 }[];
   /** Floor height at a point. Absent means flat ground at y=0. */
   groundY?: (x: number, z: number) => number;
   /**

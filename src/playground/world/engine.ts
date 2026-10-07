@@ -55,6 +55,7 @@ export interface EngineOptions {
    */
   onPointerLockChange(engaged: boolean, mode: LookMode): void;
   onRequestChat(): void;
+  onRequestMenu?(): void;
   onInteract(): void;
   onReaction(index: number): void;
   onError(message: string): void;
@@ -259,6 +260,12 @@ export function createEngine(options: EngineOptions): Engine {
       keyboard.preventDefault();
       keys.clear();
       options.onRequestChat();
+      return;
+    }
+    if (keyboard.code === "KeyM" && !keyboard.repeat) {
+      keyboard.preventDefault();
+      keys.clear();
+      options.onRequestMenu?.();
       return;
     }
     if (keyboard.code === "KeyE") {
