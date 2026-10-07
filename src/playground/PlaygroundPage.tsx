@@ -1229,20 +1229,6 @@ export default function PlaygroundPage() {
         </button>
       ) : null}
 
-      <div className="pg-reactions" role="group" aria-label="Reactions">
-        {PLAYGROUND_FACE_REACTIONS.map((emoji, index) => (
-          <button
-            key={emoji}
-            type="button"
-            title={`${index + 1} · React to the person you're facing`}
-            disabled={!canPost}
-            onClick={() => worldRef.current?.reactAtTarget(emoji)}
-          >
-            <span aria-hidden="true">{emoji}</span>
-            <kbd>{index + 1}</kbd>
-          </button>
-        ))}
-      </div>
 
       <footer className="pg-bottom">
         <div className="pg-identity">
@@ -1254,19 +1240,37 @@ export default function PlaygroundPage() {
             <small>{connected ? "In the plaza" : "Reconnecting…"}</small>
           </div>
         </div>
-        {canPost ? (
-          <button
-            type="button"
-            className="pg-chat-open"
-            onClick={() => setChatting(true)}
-          >
-            Talk<kbd>↵</kbd>
-          </button>
-        ) : (
-          <a className="pg-chat-open" href={pwaUrl(SIGN_IN_PATH) ?? SIGN_IN_PATH}>
-            Sign in to talk
-          </a>
-        )}
+        {/* Everything you say to people, in one place: reactions to whoever
+            you face, and the message composer. */}
+        <div className="pg-talk">
+          <div className="pg-reactions" role="group" aria-label="Reactions">
+            {PLAYGROUND_FACE_REACTIONS.map((emoji, index) => (
+              <button
+                key={emoji}
+                type="button"
+                title={`${index + 1} · React to the person you're facing`}
+                disabled={!canPost}
+                onClick={() => worldRef.current?.reactAtTarget(emoji)}
+              >
+                <span aria-hidden="true">{emoji}</span>
+                <kbd>{index + 1}</kbd>
+              </button>
+            ))}
+          </div>
+          {canPost ? (
+            <button
+              type="button"
+              className="pg-chat-open"
+              onClick={() => setChatting(true)}
+            >
+              Talk<kbd>↵</kbd>
+            </button>
+          ) : (
+            <a className="pg-chat-open" href={pwaUrl(SIGN_IN_PATH) ?? SIGN_IN_PATH}>
+              Sign in to talk
+            </a>
+          )}
+        </div>
       </footer>
 
       <MobileJoystick onChange={(x, y) => worldRef.current?.setJoystick(x, y)} />
