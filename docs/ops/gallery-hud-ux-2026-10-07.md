@@ -23,3 +23,29 @@ Plaza WebGL scene with fixture App Room REST/WebSocket responses; narrow,
 landscape and desktop geometry checks cover HUD containment, enlarged footer
 text and authentication reload. These fixture checks are not staging account
 or live multiplayer acceptance.
+
+## Staging publication
+
+User authorized deployment on 2026-10-07. Source `9a9f38fe79f06af27f9170bb02cdc97d6f8432ad`
+is pushed as `origin/fix/plaza-responsive-hud`. The existing staging-only
+`--ref` operator-publish path was reused with `VITE_PWA_ORIGIN=https://stg-app.ato.run`.
+A task-local copy places scratch files under workspace `.tmp/` and reuses
+previously verified immutable blobs, instead of re-uploading their identical
+bytes. Newly uploaded blobs and the new manifest were read back and SHA-256
+verified. No builder receipt was synthesized.
+
+- Capsule revision: `caprev_plaza_0020`.
+- Materialization: `swm_plaza_2vsI1m-RtrhGrQ7s`, 56 files, 17,442,835 bytes.
+- Manifest: `sha256:f07b511a3d3601fa4d460d0d5415ce193c38a265be61a6fa72340c2c0650a47d`.
+- Discover schema: `csch_discover_76be75d0cc631b2a23e36cfa`; existing `cap_plaza`
+  and `discover-plaza` were updated through the existing seed script.
+- Remote readback confirms catalogue schema, capsule revision and materialization
+  agree. The catalogue's actual icon URL is unchanged.
+- Login destination is pinned to staging PWA in the deployed build. Production,
+  API Worker, feature flags, secrets and migrations were not changed.
+
+Publication logs, manifest, R2 readback files and database receipts are in
+workspace `.tmp/gallery-ux/`; live browser receipts belong to the companion PWA
+worktree's `.tmp/`. A preliminary build without the PWA-origin pin was stopped
+before catalogue/revision activation; its uploaded immutable blobs are harmless
+and were reused where their bytes matched.
