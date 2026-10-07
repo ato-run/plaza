@@ -5,6 +5,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 
+import { askGuide, endGuideConversation, NpcChatError, newId } from "./chatClient";
 import {
   departure,
   PLACE_BY_ID,
@@ -22,22 +23,59 @@ interface GuideDialogProps {
   start: GuideReply;
   onAction(action: GuideAction): void;
   onClose(): void;
+  /**
+   * Answer free text with the guide conversation API (signed-in visitors on
+   * a real Instance). Otherwise, and whenever the API fails, the rule-based
+   * guide answers on the page.
+   */
+  useModel: boolean;
 }
 
-export function GuideDialog({ open, context, start, onAction, onClose }: GuideDialogProps) {
+export function GuideDialog({ open, context, start, onAction, onClose, useModel }: GuideDialogProps) {
   const [current, setCurrent] = useState<GuideReply>(start);
   const [asked, setAsked] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [thinking, setThinking] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+  // One server conversation per opening of the dialog; ended when it closes.
+  const conversationRef = useRef<{ id: string; used: boolean } | null>(null);
+  const pendingRef = useRef<AbortController | null>(null);
+
+  const endConversation = () => {
+    pendingRef.current?.abort();
+    pendingRef.current = null;
+    setThinking(false);
+    const conversation = conversationRef.current;
+    conversationRef.current = null;
+    if (conversation?.used) endGuideConversation(conversation.id);
+  };
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      endConversation();
+      return;
+    }
+    conversationRef.current = { id: newId("conv"), used: false };
     setCurrent(start);
     setAsked(null);
     setDraft("");
     panelRef.current?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // Leaving the page mid-conversation still closes it server-side.
+  useEffect(() => () => endConversation(), []);
+
+  // Esc closes from anywhere: while waiting the field is disabled and focus
+  // may have left the panel.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -56,17 +94,63 @@ export function GuideDialog({ open, context, start, onAction, onClose }: GuideDi
     onAction(action);
   };
 
-  const ask = (event: React.FormEvent) => {
-    event.preventDefault();
-    const text = draft.trim();
-    if (!text) return;
-    setDraft("");
+  const answerLocally = (text: string) => {
     const intent = understand(text);
     if ("place" in intent) {
       choose({ kind: "place", place: intent.place }, text);
     } else {
       choose({ kind: "node", node: intent.node }, text);
     }
+  };
+
+  const ask = (event: React.FormEvent) => {
+    event.preventDefault();
+    const text = draft.trim().slice(0, 400);
+    if (!text || thinking) return;
+    setDraft("");
+    const conversation = conversationRef.current;
+    if (!useModel || !conversation) {
+      answerLocally(text);
+      return;
+    }
+    conversation.used = true;
+    const controller = new AbortController();
+    pendingRef.current = controller;
+    setAsked(text);
+    setThinking(true);
+    panelRef.current?.focus();
+    askGuide({
+      conversationId: conversation.id,
+      requestId: newId("req"),
+      message: text,
+      context,
+      signal: controller.signal,
+    })
+      .then((answer) => {
+        // A reply to a conversation already closed or cancelled is dropped.
+        if (pendingRef.current !== controller || conversationRef.current !== conversation) return;
+        setCurrent({ text: answer.text, choices: answer.choices });
+      })
+      .catch((error: unknown) => {
+        if (pendingRef.current !== controller || conversationRef.current !== conversation) return;
+        // A closed or foreign conversation id: start a fresh one next time.
+        if (error instanceof NpcChatError && /conversation_/.test(error.code)) {
+          conversationRef.current = { id: newId("conv"), used: false };
+        }
+        answerLocally(text);
+      })
+      .finally(() => {
+        if (pendingRef.current === controller) {
+          pendingRef.current = null;
+          setThinking(false);
+        }
+      });
+  };
+
+  const cancel = () => {
+    pendingRef.current?.abort();
+    pendingRef.current = null;
+    setThinking(false);
   };
 
   return (
@@ -95,9 +179,22 @@ export function GuideDialog({ open, context, start, onAction, onClose }: GuideDi
       </header>
       {asked ? <p className="pg-guide-asked">{asked}</p> : null}
       <p className="pg-guide-line" aria-live="polite">
-        {current.text}
+        {thinking ? (
+          <span className="pg-guide-thinking">
+            Nagi is thinking<span aria-hidden="true">…</span>
+          </span>
+        ) : (
+          current.text
+        )}
       </p>
-      <div className="pg-guide-choices">
+      {thinking ? (
+        <div className="pg-guide-choices">
+          <button type="button" onClick={cancel}>
+            Cancel
+          </button>
+        </div>
+      ) : null}
+      <div className="pg-guide-choices" hidden={thinking}>
         {current.choices.map((choice) => (
           <button key={choice.label} type="button" onClick={() => choose(choice.action, choice.label)}>
             {choice.label}
@@ -110,9 +207,10 @@ export function GuideDialog({ open, context, start, onAction, onClose }: GuideDi
           onChange={(event) => setDraft(event.target.value)}
           placeholder="Ask anything (e.g. What can I do here?)"
           aria-label="Ask Nagi"
-          maxLength={80}
+          maxLength={400}
+          disabled={thinking}
         />
-        <button type="submit" disabled={!draft.trim()}>
+        <button type="submit" disabled={!draft.trim() || thinking}>
           Ask
         </button>
       </form>

@@ -1375,6 +1375,7 @@ export default function PlaygroundPage() {
         start={guideStart ?? guideReply("greeting", guideContext())}
         onAction={runGuideAction}
         onClose={() => setGuideOpen(false)}
+        useModel={!!state.viewer && !state.viewer.is_guest}
       />
 
       {guideNote && !guideOpen ? (
