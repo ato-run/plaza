@@ -10,6 +10,12 @@
  * should notice — people, and things to try — in the same place, competing.
  * A plaza reads as a place to meet when its middle is kept for whoever is
  * standing in it.
+ *
+ * It is a beach now: the plaza is the flat, trodden top of a sandy point,
+ * with open sea ahead of the entrance and dunes behind. Only the scenery
+ * changed. The furniture stands where it stood and collides where it
+ * collided — `centralGeometry` is shared with the AI Controller and the
+ * server's adapter, and the ground under people is still exactly y=0.
  */
 import * as THREE from "three";
 
@@ -23,7 +29,13 @@ import {
   CENTRAL_LANTERNS,
   CENTRAL_MASCOTS,
 } from "./centralGeometry";
-import { bench, lantern, planter, tree } from "../primitives";
+import { bench, lantern } from "../primitives";
+import { createBeachAssets, LoadAborted } from "../beach/assets";
+import { createCoastUniforms } from "../beach/coastShader";
+import { createOcean } from "../beach/ocean";
+import { grassPlacements, OUTER_PALMS, placeRocks } from "../beach/scenery";
+import { createTerrain } from "../beach/terrain";
+import { createVegetation } from "../beach/vegetation";
 import {
   animateMascot,
   createMascot,
@@ -45,58 +57,91 @@ export const centralPlaza: WorldDefinition = {
     fog: "#c8e1e0",
     fogNear: 26,
     fogFar: 72,
+    // Late morning over the sea: the sun stands north-west, ahead and to the
+    // left of the entrance, so the glitter lies across the water in view.
+    sky: {
+      sunDirection: [-0.62, 0.55, -0.56],
+      sunColor: "#fff2dc",
+      sunIntensity: 3.1,
+      zenith: "#3f7fd0",
+      horizon: "#abcae0",
+      ground: "#c2ae8a",
+      hazeDensity: 0.0042,
+      far: 900,
+      exposure: 0.9,
+      environmentIntensity: 1,
+      clouds: 0.5,
+    },
   },
   available: true,
 
-  build({ builder, labelHost, reducedMotion }): WorldRuntime {
+  build({ builder, labelHost, reducedMotion, quality, lighting, signal }): WorldRuntime {
     const colliders = centralColliders();
     const interactables: Interactable[] = [];
     const mascots: Mascot[] = [];
 
-    // ---- ground ----------------------------------------------------------
-    builder.box(200, 0.4, 200, "#95b68d", 0, -0.35, 0);
-    builder.cylinder(19, 0.18, "#d8ded0", 0, -0.08, 0, 64);
-    builder.cylinder(13, 0.04, "#e4e6da", 0, 0.03, 0, 64);
+    // ---- shore -----------------------------------------------------------
+    // Sand and sea draw immediately from procedural placeholders; scanned
+    // textures and rock models refine them as they arrive and never gate the
+    // World (or chat) on a download.
+    const coast = createCoastUniforms(quality.level === "high" ? 512 : 256);
+    builder.trackResource(coast.uCoastField.value);
+    const terrain = createTerrain(coast, lighting.sky, quality);
+    builder.track(terrain.mesh);
+    terrain.resources.forEach((resource) => builder.trackResource(resource));
+    const ocean = createOcean(coast, lighting, quality);
+    builder.track(ocean.mesh);
+    ocean.resources.forEach((resource) => builder.trackResource(resource));
 
-    // Paving joints — quiet detail that makes movement legible underfoot.
-    for (let i = -18; i <= 18; i += 3) {
-      builder.box(0.025, 0.009, 35, "#bbc9b8", i, 0.016, 0);
-      builder.box(35, 0.009, 0.025, "#bbc9b8", 0, 0.018, i);
-    }
+    const assets = createBeachAssets(signal, quality.level === "high" ? 8 : 4);
+    const scenery = builder.group();
+    scenery.name = "beach-scenery";
+    void terrain.load(assets);
+    void placeRocks(scenery, assets, signal, (resource) =>
+      builder.trackResource(resource),
+    ).catch((error: unknown) => {
+      if (!(error instanceof LoadAborted)) console.warn("[plaza] rocks unavailable");
+    });
 
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(6.4, 6.44, 80),
-      builder.material("#a6b8a2", { basic: true }),
+    // ---- planting --------------------------------------------------------
+    // Palms stand exactly on the old trees' roots (their colliders are
+    // unchanged); more frame the view from beyond the walk limit.
+    const vegetation = createVegetation(
+      [
+        ...CENTRAL_TREES.map(([x, z, scale]) => ({ x, z, scale })),
+        ...OUTER_PALMS,
+      ],
+      CENTRAL_PLANTERS,
+      quality.scatter ? grassPlacements(220) : [],
+      reducedMotion,
     );
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.058;
-    builder.track(ring);
+    vegetation.objects.forEach((object) => builder.track(object));
+    vegetation.resources.forEach((resource) => builder.trackResource(resource));
 
     // ---- fountain --------------------------------------------------------
-    // Three stacked stone rings, then water. The water is unlit and slightly
-    // transparent so it reads as a surface rather than as another stone.
-    builder.cylinder(FOUNTAIN_RADIUS, 0.55, "#c3c9bd", 0, 0.27, 0, 40);
-    builder.cylinder(FOUNTAIN_RADIUS - 0.28, 0.5, "#d6dbcf", 0, 0.34, 0, 40);
-    builder.cylinder(FOUNTAIN_RADIUS - 0.55, 0.12, "#b3bcae", 0, 0.55, 0, 40);
+    // Weathered coral stone round a pool that takes the sky's reflection.
+    builder.cylinder(FOUNTAIN_RADIUS, 0.55, "#d3c3a3", 0, 0.27, 0, 40);
+    builder.cylinder(FOUNTAIN_RADIUS - 0.28, 0.5, "#e2d6bd", 0, 0.34, 0, 40);
+    builder.cylinder(FOUNTAIN_RADIUS - 0.55, 0.12, "#c2b08f", 0, 0.55, 0, 40);
 
     const water = builder.cylinder(
       FOUNTAIN_RADIUS - 0.62,
       0.06,
-      "#7fb9c4",
+      "#1f7480",
       0,
       0.54,
       0,
       40,
     );
-    water.material = builder.material("#7fb9c4", {
-      basic: true,
+    water.material = builder.material("#1f7480", {
       transparent: true,
-      opacity: 0.68,
+      opacity: 0.9,
+      roughness: 0.04,
     });
     water.castShadow = false;
 
-    builder.cylinder(0.5, 1.15, "#c9cec2", 0, 1.1, 0, 20);
-    builder.cylinder(1.1, 0.2, "#d6dbcf", 0, 1.75, 0, 24);
+    builder.cylinder(0.5, 1.15, "#d9cbaf", 0, 1.1, 0, 20);
+    builder.cylinder(1.1, 0.2, "#e2d6bd", 0, 1.75, 0, 24);
     const jet = builder.cylinder(0.12, 1.5, "#a9d8de", 0, 2.5, 0, 12);
     jet.material = builder.material("#a9d8de", {
       basic: true,
@@ -132,23 +177,26 @@ export const centralPlaza: WorldDefinition = {
     );
     builder.track(droplets);
 
-    // ---- planting and furniture -----------------------------------------
-    CENTRAL_TREES.forEach(([x, z, scale]) => {
-      tree(builder, x, z, scale);
-    });
-
+    // ---- furniture -------------------------------------------------------
+    // Planters keep their footprint (and collider): coral-stone boxes of
+    // dark soil, the ferns in them come from the vegetation above.
     for (const [x, z] of CENTRAL_PLANTERS) {
-      planter(builder, x, z);
+      builder.box(3, 0.55, 1.3, "#cbb995", x, 0.27, z);
+      builder.box(2.8, 0.12, 1.1, "#4f4232", x, 0.57, z);
     }
 
     // Benches face the fountain: a ring of seats around a middle is what
     // makes a square somewhere to wait rather than somewhere to cross.
     for (const [x, z, rotation] of CENTRAL_BENCHES) {
-      bench(builder, x, z, rotation);
+      bench(builder, x, z, rotation, {
+        seat: "#a3896c",
+        back: "#b09878",
+        legs: "#5a4a3a",
+      });
     }
 
     for (const [x, z] of CENTRAL_LANTERNS) {
-      lantern(builder, x, z);
+      lantern(builder, x, z, "#ffe2a8", 3.1, "#6b563f");
     }
 
     // ---- mascots ---------------------------------------------------------
@@ -173,6 +221,11 @@ export const centralPlaza: WorldDefinition = {
       softwareSlots: CENTRAL_SOFTWARE_SLOTS,
 
       update(_dt, now) {
+        // One local clock drives water, sand and wind; nothing about the sea
+        // is synchronised over the network. Reduced motion slows it down.
+        const seconds = (now / 1000) * (reducedMotion ? 0.4 : 1);
+        coast.uTime.value = seconds;
+        vegetation.wind.uTime.value = seconds;
         for (const mascot of mascots) {
           animateMascot(mascot, now, reducedMotion);
           updateMascotBubble(mascot, now);
