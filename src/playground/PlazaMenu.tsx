@@ -2,7 +2,7 @@
  * The one place that explains and changes how you are in the Plaza: who you
  * appear as, the light you see, which World you are in, and the controls.
  *
- * Opened from the Menu button, the room chip, or M. While it is open the
+ * Opened from the Menu button or M. While it is open the
  * world is paused, so keys typed into the name field never walk you around.
  */
 import { useEffect, useRef, useState } from "react";
@@ -32,6 +32,8 @@ interface PlazaMenuProps {
   worlds: readonly WorldDefinition[];
   worldId: WorldId;
   worldOnline: Partial<Record<WorldId, number>>;
+  /** People in this room right now (the World you are in). */
+  online: number;
   onEnterWorld(id: WorldId): void;
   timeOfDay: string | null;
   onTimeOfDay(id: string | null): void;
@@ -206,7 +208,7 @@ export function PlazaMenu(props: PlazaMenuProps) {
                       {!definition.available
                         ? "Coming soon"
                         : here
-                          ? "You are here"
+                          ? `You are here · ${props.online} online`
                           : /* An absent count is not zero: a server without
                                per-World counts would otherwise report every
                                World as empty. */

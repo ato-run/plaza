@@ -53,56 +53,6 @@
   pointer-events: none;
 }
 
-.pg-room {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(12px);
-  padding: 11px 18px;
-  border: 1px solid rgba(255, 255, 255, 0.71);
-  border-radius: 30px;
-  font-size: 12px;
-  letter-spacing: 1.4px;
-  font-weight: 600;
-}
-
-.pg-live {
-  width: 6px;
-  height: 6px;
-  background: #368863;
-  border-radius: 50%;
-}
-
-/* Disconnected is a real state, and a HUD that hides it is lying. */
-.pg-live--off {
-  background: #c0743f;
-}
-
-.pg-room-count {
-  border-left: 1px solid #bed0c7;
-  padding-left: 10px;
-}
-
-/* The room chip is a button now: it opens the World Selector. Interactive, so
-   it opts back INTO pointer events the topbar gives up. */
-button.pg-room {
-  pointer-events: auto;
-  cursor: pointer;
-  font: inherit;
-  color: inherit;
-  letter-spacing: 1.4px;
-}
-
-button.pg-room:hover {
-  background: rgba(255, 255, 255, 0.88);
-}
-
-.pg-room-index {
-  font-variant-numeric: tabular-nums;
-  opacity: 0.55;
-}
-
 .pg-selector-backdrop {
   position: absolute;
   inset: 0;

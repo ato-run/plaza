@@ -1121,7 +1121,6 @@ export default function PlaygroundPage() {
   const online = runnerAvailableRef.current
     ? presence.online
     : state.online || presence.online;
-  const world = WORLDS.find((entry) => entry.id === worldId) ?? WORLDS[0];
 
   return (
     <main
@@ -1149,30 +1148,6 @@ export default function PlaygroundPage() {
         >
           <span aria-hidden="true">☰</span> Menu <kbd>M</kbd>
         </button>
-        <button
-          type="button"
-          className="pg-room"
-          aria-haspopup="dialog"
-          aria-expanded={menuOpen}
-          onClick={(event) => {
-            event.currentTarget.blur();
-            openMenu("world");
-          }}
-        >
-          <span
-            className={`pg-live${
-              (runnerAvailableRef.current ? runnerBacked : connected)
-                ? ""
-                : " pg-live--off"
-            }`}
-            aria-hidden="true"
-          />
-          {world.name}
-          <span className="pg-room-index">
-            {String(world.index).padStart(2, "0")}
-          </span>
-          <span className="pg-room-count">{online}</span>
-        </button>
       </header>
 
       <PlazaMenu
@@ -1189,6 +1164,7 @@ export default function PlaygroundPage() {
         worlds={WORLDS}
         worldId={worldId}
         worldOnline={presence.worldOnline}
+        online={online}
         onEnterWorld={(id) => {
           setMenuOpen(false);
           worldRef.current?.enterWorld(id);
