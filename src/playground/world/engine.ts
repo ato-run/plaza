@@ -12,7 +12,7 @@
  */
 import * as THREE from "three";
 
-import { resolveMovement, type Collider } from "./collision";
+import { blockingColliders, resolveMovement, type Collider } from "./collision";
 import { createWorldBuilder, type WorldBuilder } from "./primitives";
 import { createEnvironment } from "./rendering/environment";
 import {
@@ -398,7 +398,11 @@ export function createEngine(options: EngineOptions): Engine {
       { vx, vz },
       // Read live: `world.ts` replaces the array when exhibits arrive, so a
       // copy taken at mount would never see a plinth.
-      world?.colliders ?? NO_COLLIDERS,
+      // Obstacles you have jumped level with stop blocking (see `top`).
+      blockingColliders(
+        world?.colliders ?? NO_COLLIDERS,
+        camera.position.y - (crouching ? CROUCH_EYE_HEIGHT : EYE_HEIGHT),
+      ),
       undefined,
       WORLD_RADIUS,
       world?.walkable,

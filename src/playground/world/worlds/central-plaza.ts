@@ -30,6 +30,7 @@ import {
   CENTRAL_MASCOTS,
 } from "./centralGeometry";
 import { bench, lantern } from "../primitives";
+import { BODY_RADIUS, circle } from "../collision";
 import { createBeachAssets, LoadAborted } from "../beach/assets";
 import { createCoastUniforms } from "../beach/coastShader";
 import { createOcean } from "../beach/ocean";
@@ -46,6 +47,11 @@ import {
   type Mascot,
 } from "../mascot";
 import type { Interactable, WorldDefinition, WorldRuntime, WorldSky } from "../types";
+
+/** Height of the fountain's rim and basin floor: one jump (0.85m) clears it. */
+const FOUNTAIN_TOP = 0.6;
+/** The central pedestal and upper bowl: too tall to climb. */
+const FOUNTAIN_COLUMN_RADIUS = 1.15;
 
 /**
  * Late morning over the sea: the sun stands north-west, ahead and to the
@@ -107,7 +113,21 @@ export const centralPlaza: WorldDefinition = {
   build({ builder, labelHost, reducedMotion, quality, lighting, signal }): WorldRuntime {
     // The shared colliders (the AI Controller and server use the same list)
     // plus local ones for rocks and palms on the open beach.
-    const colliders = [...centralColliders(), ...sceneryColliders()];
+    //
+    // Locally, the fountain is a step you can jump onto: its wall stops
+    // blocking once your feet are level with the rim, and only the column in
+    // the middle stays solid. The shared list keeps it a plain wall — the AI
+    // never climbs, and the server checks it with exactly that list.
+    const fountain = circle(0, 0, FOUNTAIN_RADIUS + 0.1);
+    const colliders = [
+      ...centralColliders().filter(
+        (collider) =>
+          !(collider.shape === "circle" && collider.x === 0 && collider.z === 0),
+      ),
+      { ...fountain, top: FOUNTAIN_TOP },
+      circle(0, 0, FOUNTAIN_COLUMN_RADIUS),
+      ...sceneryColliders(),
+    ];
     const interactables: Interactable[] = [];
     const mascots: Mascot[] = [];
 
@@ -254,7 +274,10 @@ export const centralPlaza: WorldDefinition = {
       // The plaza is flat at 0; beyond it people may walk the beach down
       // into the shallows, slower once the water is above the ankles.
       walkable: beachWalkable,
-      groundY: terrainHeight,
+      // The fountain's top covers its whole collider plus a body radius, so a
+      // body allowed to overlap the wall is always standing on it.
+      groundY: (x, z) =>
+        Math.hypot(x, z) < fountain.r + BODY_RADIUS ? FOUNTAIN_TOP : terrainHeight(x, z),
       speedScale: (x, z) => {
         const depth = waterDepth(x, z);
         return depth <= 0.1 ? 1 : depth >= 0.5 ? 0.55 : 1 - (depth - 0.1) * 1.125;

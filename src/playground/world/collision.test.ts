@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   BODY_RADIUS,
   box,
+  blockingColliders,
   circle,
   isPositionValid,
   overlaps,
@@ -80,5 +81,23 @@ describe("box colliders", () => {
     const next = resolveMovement({ x: 0, z: 1.1 }, { vx: 0.4, vz: -0.4 }, [wall]);
     expect(next.x).toBeCloseTo(0.4, 6);
     expect(next.z).toBeCloseTo(1.1, 6);
+  });
+});
+
+describe("climbable obstacles", () => {
+  const step = { ...circle(0, 0, 3.3), top: 0.6 };
+  const wall = circle(10, 0, 1);
+
+  it("blocks feet below the top and lets feet level with it through", () => {
+    expect(blockingColliders([step, wall], 0)).toEqual([step, wall]);
+    expect(blockingColliders([step, wall], 0.57)).toEqual([wall]);
+    expect(blockingColliders([step, wall], 0.85)).toEqual([wall]);
+  });
+
+  it("walks into the fountain only from above", () => {
+    const from = { x: -3.7, z: 0 };
+    const push = { vx: 0.2, vz: 0 };
+    expect(resolveMovement(from, push, blockingColliders([step], 0)).x).toBe(-3.7);
+    expect(resolveMovement(from, push, blockingColliders([step], 0.7)).x).toBeCloseTo(-3.5);
   });
 });
