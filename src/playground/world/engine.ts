@@ -170,6 +170,7 @@ export function createEngine(options: EngineOptions): Engine {
 
   /** Dev harness only: a pinned World clock for same-frame comparisons. */
   let devClock: number | null = null;
+  let mountedDefinition: WorldDefinition | null = null;
 
   let world: WorldRuntime | null = null;
   /** Fires when the current World is unmounted; its late loads must stop. */
@@ -419,6 +420,7 @@ export function createEngine(options: EngineOptions): Engine {
       // phone cannot absorb.
       unmountWorld();
 
+      mountedDefinition = definition;
       const lighting = environment.apply(definition.environment);
       const abort = new AbortController();
       worldAbort = abort;
@@ -560,6 +562,10 @@ export function createEngine(options: EngineOptions): Engine {
       },
       setClock(ms: number | null) {
         devClock = ms;
+      },
+      /** Unmount and rebuild the current World in place (leak checks). */
+      remount() {
+        if (mountedDefinition) engine.mount(mountedDefinition);
       },
     };
     (window as unknown as { __plaza?: typeof harness }).__plaza = harness;
