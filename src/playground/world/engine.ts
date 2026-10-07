@@ -14,6 +14,13 @@ import * as THREE from "three";
 
 import { resolveMovement, type Collider } from "./collision";
 import { createWorldBuilder, type WorldBuilder } from "./primitives";
+import { createEnvironment } from "./rendering/environment";
+import {
+  detectQuality,
+  PixelRatioController,
+  QUALITY_PROFILES,
+  type QualityProfile,
+} from "./rendering/quality";
 import {
   CROUCH_EYE_HEIGHT,
   CROUCH_SPEED,
@@ -49,6 +56,7 @@ export interface Engine {
   readonly scene: THREE.Scene;
   readonly camera: THREE.PerspectiveCamera;
   readonly reducedMotion: boolean;
+  readonly quality: QualityProfile;
   readonly labelHost: HTMLElement;
   /** Null between `dispose()` of one World and `mount()` of the next. */
   readonly world: WorldRuntime | null;
@@ -84,7 +92,23 @@ export function createEngine(options: EngineOptions): Engine {
   } catch (cause) {
     throw new Error("webgl_unavailable", { cause });
   }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
+  // `?quality=low|high` pins the tier in dev builds, for side-by-side checks.
+  const forcedQuality = import.meta.env.DEV
+    ? new URLSearchParams(window.location.search).get("quality")
+    : null;
+  const quality =
+    QUALITY_PROFILES[
+      forcedQuality === "low" || forcedQuality === "high"
+        ? forcedQuality
+        : detectQuality({
+            coarsePointer: window.matchMedia?.("(pointer: coarse)").matches ?? false,
+            shortSide: Math.min(window.screen?.width ?? width, window.screen?.height ?? height),
+            cores: navigator.hardwareConcurrency || undefined,
+            memoryGb: (navigator as Navigator & { deviceMemory?: number }).deviceMemory,
+          })
+    ];
+  const pixelRatio = new PixelRatioController(quality, window.devicePixelRatio || 1);
+  renderer.setPixelRatio(pixelRatio.current);
   renderer.setSize(width, height);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -109,13 +133,20 @@ export function createEngine(options: EngineOptions): Engine {
   const sun = new THREE.DirectionalLight("#fff4da", 3);
   sun.position.set(-12, 22, 9);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  // Shadow texels go to the place people stand and talk; scenery beyond the
+  // walk limit is lit but casts nothing worth a bigger map.
+  sun.shadow.mapSize.set(quality.shadowMapSize, quality.shadowMapSize);
   sun.shadow.camera.left = -30;
   sun.shadow.camera.right = 30;
   sun.shadow.camera.top = 30;
   sun.shadow.camera.bottom = -30;
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 140;
   sun.shadow.bias = -0.0003;
+  sun.shadow.normalBias = 0.02;
   scene.add(sun);
+  scene.add(sun.target);
+  const environment = createEnvironment(renderer, scene, camera, sun, hemisphere);
 
   const keys = new Set<string>();
   const joystick = { x: 0, y: 0 };
@@ -141,6 +172,8 @@ export function createEngine(options: EngineOptions): Engine {
   let devClock: number | null = null;
 
   let world: WorldRuntime | null = null;
+  /** Fires when the current World is unmounted; its late loads must stop. */
+  let worldAbort: AbortController | null = null;
   let worldRoot: THREE.Group | null = null;
   let worldBuilder: WorldBuilder | null = null;
   let groundY: ((x: number, z: number) => number) | null = null;
@@ -252,13 +285,27 @@ export function createEngine(options: EngineOptions): Engine {
   on(renderer.domElement, "pointerup", endDrag);
   on(renderer.domElement, "pointercancel", endDrag);
 
-  on(window, "resize", () => {
-    const w = host.clientWidth || 1;
-    const h = host.clientHeight || 1;
+  // The host, not the window: Plaza is embedded in an Activity frame whose
+  // size changes without any window resize.
+  let hostWidth = width;
+  let hostHeight = height;
+  const resize = () => {
+    const w = host.clientWidth;
+    const h = host.clientHeight;
+    if (w === 0 || h === 0 || (w === hostWidth && h === hostHeight)) return;
+    hostWidth = w;
+    hostHeight = h;
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
-  });
+  };
+  if (typeof ResizeObserver === "function") {
+    const observer = new ResizeObserver(resize);
+    observer.observe(host);
+    teardown.push(() => observer.disconnect());
+  } else {
+    on(window, "resize", resize);
+  }
 
   // A lost context otherwise leaves a frozen canvas with no explanation.
   on(renderer.domElement, "webglcontextlost", (event) => {
@@ -268,6 +315,7 @@ export function createEngine(options: EngineOptions): Engine {
   });
   on(renderer.domElement, "webglcontextrestored", () => {
     contextLost = false;
+    environment.restore();
   });
 
   // ---- frame ---------------------------------------------------------------
@@ -278,8 +326,11 @@ export function createEngine(options: EngineOptions): Engine {
   function frame(now: number): void {
     raf = requestAnimationFrame(frame);
     if (contextLost) return;
-    const dt = Math.min((now - lastFrame) / 1000, 0.05);
+    const frameMs = now - lastFrame;
+    const dt = Math.min(frameMs / 1000, 0.05);
     lastFrame = now;
+    const ratio = paused ? null : pixelRatio.sample(frameMs);
+    if (ratio !== null) renderer.setPixelRatio(ratio);
 
     let right = 0;
     let ahead = 0;
@@ -339,6 +390,8 @@ export function createEngine(options: EngineOptions): Engine {
   }
 
   function unmountWorld(): void {
+    worldAbort?.abort();
+    worldAbort = null;
     world?.dispose();
     worldBuilder?.dispose();
     if (worldRoot) scene.remove(worldRoot);
@@ -346,12 +399,14 @@ export function createEngine(options: EngineOptions): Engine {
     worldRoot = null;
     worldBuilder = null;
     groundY = null;
+    environment.clear();
   }
 
   const engine: Engine = {
     scene,
     camera,
     reducedMotion,
+    quality,
     labelHost: host,
 
     get world() {
@@ -364,12 +419,9 @@ export function createEngine(options: EngineOptions): Engine {
       // phone cannot absorb.
       unmountWorld();
 
-      scene.background = new THREE.Color(definition.environment.background);
-      scene.fog = new THREE.Fog(
-        definition.environment.fog,
-        definition.environment.fogNear,
-        definition.environment.fogFar,
-      );
+      const lighting = environment.apply(definition.environment);
+      const abort = new AbortController();
+      worldAbort = abort;
 
       const root = new THREE.Group();
       root.name = `world:${definition.id}`;
@@ -383,6 +435,9 @@ export function createEngine(options: EngineOptions): Engine {
         builder,
         labelHost: host,
         reducedMotion,
+        quality,
+        lighting,
+        signal: abort.signal,
       });
       world = runtime;
       groundY = runtime.groundY ?? null;
@@ -479,6 +534,7 @@ export function createEngine(options: EngineOptions): Engine {
       cancelAnimationFrame(raf);
       teardown.forEach((off) => off());
       unmountWorld();
+      environment.dispose();
       hemisphere.dispose();
       sun.dispose();
       sun.shadow.map?.dispose();
@@ -495,6 +551,7 @@ export function createEngine(options: EngineOptions): Engine {
       renderer,
       scene,
       camera,
+      quality,
       setView(x: number, z: number, nextYaw: number, nextPitch: number) {
         camera.position.x = x;
         camera.position.z = z;
