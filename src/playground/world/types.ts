@@ -149,7 +149,7 @@ export interface WorldLighting {
  * because aiming at the middle of a person is what a player expects to work.
  */
 export interface Interactable {
-  kind: "software" | "mascot" | "seat";
+  kind: "software" | "mascot" | "seat" | "guide";
   /** Stable within a World; used as the target-change key. */
   id: string;
   title: string;
@@ -232,7 +232,10 @@ export interface WorldRuntime {
   walkable?: (x: number, z: number) => boolean;
   /** Walking-speed multiplier at a point (wading is slower). Default 1. */
   speedScale?: (x: number, z: number) => number;
-  update?: (dt: number, now: number) => void;
+  /** `eye` is where the viewer stands (camera position), for things that react to them. */
+  update?: (dt: number, now: number, eye?: THREE.Vector3) => void;
+  /** The World's guide, if it has one: the page speaks through her. */
+  guide?: { say(text: string, durationMs?: number): void };
   dispose(): void;
 }
 

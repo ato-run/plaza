@@ -1,4 +1,3 @@
-import { PlazaMenu, type MenuSection } from "./PlazaMenu";
 import { CoopControls } from "./coop/CoopControls";
 /**
  * Playground — one global Lobby (`global-v1`), as a first-person world.
@@ -22,6 +21,19 @@ import { CoopControls } from "./coop/CoopControls";
  * into the world through an effect rather than re-rendering React at 60fps.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { GuideDialog } from "./guide/GuideDialog";
+import {
+  ENTRY_CHOICES,
+  PLACE_BY_ID,
+  PRACTICE_PROMPTS,
+  reply as guideReply,
+  SUCCESS_LINE,
+  type GuideAction,
+  type GuideContext,
+  type GuideReply,
+  type PracticeSkill,
+} from "./guide/nagi";
+import { PlazaMenu, type MenuSection } from "./PlazaMenu";
 
 import { AppRoomTransport, type AppRoomMessage } from "./roomTransport";
 import {
@@ -121,6 +133,8 @@ function targetKindLabel(target: WorldTarget): string {
       return "NEAR YOU";
     case "mascot":
       return "GUIDE";
+    case "guide":
+      return "PLAZA GUIDE";
     case "seat":
       return "SEAT";
     default:
@@ -129,7 +143,7 @@ function targetKindLabel(target: WorldTarget): string {
 }
 
 function targetTitle(target: WorldTarget): string {
-  return target.kind === "person" || target.kind === "mascot"
+  return target.kind === "person" || target.kind === "mascot" || target.kind === "guide"
     ? target.name
     : target.title;
 }
@@ -140,6 +154,8 @@ function targetActionLabel(target: WorldTarget): string {
       return "Talk";
     case "mascot":
       return "Pet";
+    case "guide":
+      return "Talk";
     case "seat":
       return "Sit";
     case "app":
@@ -195,6 +211,29 @@ export default function PlaygroundPage() {
     setMenuOpen(true);
   }, []);
   const identityTimeoutRef = useRef<number | undefined>(undefined);
+
+  // ---- ナギ: conversation, lessons and journeys ---------------------------
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [guideStart, setGuideStart] = useState<GuideReply | null>(null);
+  const guideTalkedRef = useRef(false);
+  /** A line from ナギ shown in the HUD while you practise or travel. */
+  const [guideNote, setGuideNote] = useState<string | null>(null);
+  const guideTaskRef = useRef<
+    | { kind: "practice"; skill: PracticeSkill; from: { x: number; y: number; z: number; yaw: number }; done?: boolean }
+    | { kind: "go"; place: string }
+    | null
+  >(null);
+  const openGuide = useCallback(() => {
+    const first = !guideTalkedRef.current;
+    guideTalkedRef.current = true;
+    // First time: her greeting. After that: straight to "how can I help".
+    setGuideStart(
+      first ? null : { text: "はい、どうしましたか？ 何でも聞いてください。", choices: [...ENTRY_CHOICES] },
+    );
+    setGuideOpen(true);
+  }, []);
+  const openGuideRef = useRef(openGuide);
+  openGuideRef.current = openGuide;
   const openMenuRef = useRef(openMenu);
   const toggleCrouch = useCallback(() => {
     setCrouched((previous) => {
@@ -901,6 +940,10 @@ export default function PlaygroundPage() {
             setChatting(true);
             return;
           }
+          if (item.kind === "guide") {
+            openGuideRef.current();
+            return;
+          }
           // Mascots and seats never reach here — the World handles its own
           // local affordances, so this page only ever opens Software.
           if (item.kind !== "app" && item.kind !== "activity") return;
@@ -926,6 +969,8 @@ export default function PlaygroundPage() {
           window.open(href, "_blank", "noopener");
         },
         onFaceReaction: (principalId, emoji) => {
+          const task = guideTaskRef.current;
+          if (task?.kind === "practice" && task.skill === "react") task.done = true;
           if (runnerAvailableRef.current) {
             try {
               runnerDispatchRef.current(
@@ -1036,20 +1081,106 @@ export default function PlaygroundPage() {
     worldRef.current?.setExhibits(exhibits);
   }, [exhibits]);
 
+  // ---- ナギ ---------------------------------------------------------------
+
+  const isTouch =
+    typeof window !== "undefined" &&
+    (window.matchMedia?.("(pointer: coarse)").matches ?? false);
+
+  /** What ナギ can see of your situation when she answers. */
+  const guideContext = (): GuideContext => ({
+    touch: isTouch,
+    lookMode,
+    engaged: locked,
+    canPost: state.viewer?.can_post === true,
+    peopleNearby: worldRef.current?.peopleNear(12) ?? 0,
+    exhibits: exhibits.length,
+    hasTimesOfDay: true,
+  });
+
+  const runGuideAction = useCallback((action: GuideAction) => {
+    const world = worldRef.current;
+    setGuideOpen(false);
+    if (!world) return;
+    if (action.kind === "practice") {
+      const pose = world.viewerPose();
+      guideTaskRef.current = { kind: "practice", skill: action.skill, from: pose };
+      setGuideNote(PRACTICE_PROMPTS[action.skill]);
+      if (action.skill === "talk") return;
+      world.requestPointerLock();
+      return;
+    }
+    if (action.kind === "go") {
+      const place = PLACE_BY_ID.get(action.place);
+      if (!place) return;
+      guideTaskRef.current = { kind: "go", place: place.id };
+      world.setWaypoint({ x: place.x, z: place.z });
+      setGuideNote(`${place.label}へ向かいましょう。光の柱が目印です。`);
+      world.requestPointerLock();
+      return;
+    }
+    if (action.kind === "menu") {
+      openMenuRef.current(action.section);
+    }
+  }, []);
+
+  // Watch the lesson or journey in progress, a few times a second.
+  useEffect(() => {
+    const finish = (line: string) => {
+      guideTaskRef.current = null;
+      setGuideNote(line);
+      worldRef.current?.guideSay(SUCCESS_LINE);
+      window.setTimeout(() => setGuideNote((current) => (current === line ? null : current)), 6000);
+    };
+    const timer = window.setInterval(() => {
+      const task = guideTaskRef.current;
+      const world = worldRef.current;
+      if (!task || !world) return;
+      const pose = world.viewerPose();
+      if (task.kind === "go") {
+        const place = PLACE_BY_ID.get(task.place as never);
+        if (!place) return;
+        const distance = Math.hypot(pose.x - place.x, pose.z - place.z);
+        if (distance <= place.radius) {
+          world.setWaypoint(null);
+          finish(`着きました。${SUCCESS_LINE}`);
+        } else {
+          setGuideNote(`${place.label}まで あと ${Math.round(distance)}m`);
+        }
+        return;
+      }
+      const from = task.from;
+      const turned = Math.abs(Math.atan2(Math.sin(pose.yaw - from.yaw), Math.cos(pose.yaw - from.yaw)));
+      const done =
+        task.done ||
+        (task.skill === "move" && Math.hypot(pose.x - from.x, pose.z - from.z) > 2.5) ||
+        (task.skill === "look" && turned > 1.2) ||
+        (task.skill === "jump" && pose.y > from.y + 0.35);
+      if (done) finish(SUCCESS_LINE);
+    }, 150);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  // Opening the composer is the "talk" lesson's goal.
+  useEffect(() => {
+    const task = guideTaskRef.current;
+    if (chatting && task?.kind === "practice" && task.skill === "talk") task.done = true;
+  }, [chatting]);
+
   // Chat and pointer lock are mutually exclusive: a locked pointer swallows
   // the keystrokes the composer needs.
   useEffect(() => {
-    if (menuOpen) document.exitPointerLock?.();
-  }, [menuOpen]);
+    if (menuOpen || guideOpen) document.exitPointerLock?.();
+  }, [menuOpen, guideOpen]);
 
   useEffect(() => {
-    worldRef.current?.setPaused(chatting || menuOpen);
+    worldRef.current?.setPaused(chatting || menuOpen || guideOpen);
     if (chatting) {
       document.exitPointerLock?.();
       const handle = window.setTimeout(() => inputRef.current?.focus(), 30);
       return () => window.clearTimeout(handle);
     }
-  }, [chatting, menuOpen]);
+  }, [chatting, menuOpen, guideOpen]);
 
   useEffect(() => {
     worldRef.current?.setTimeOfDay(timeOfDay);
@@ -1212,7 +1343,7 @@ export default function PlaygroundPage() {
         </div>
       ) : null}
 
-      {target && !chatting ? (
+      {target && !chatting && !guideOpen && !menuOpen ? (
         <div className="pg-interaction">
           <span className="pg-interaction-kind">{targetKindLabel(target)}</span>
           <strong>{targetTitle(target)}</strong>
@@ -1226,7 +1357,7 @@ export default function PlaygroundPage() {
         </div>
       ) : null}
 
-      {!locked && !chatting && !menuOpen ? (
+      {!locked && !chatting && !menuOpen && !guideOpen ? (
         <button
           type="button"
           className="pg-enter"
@@ -1237,6 +1368,35 @@ export default function PlaygroundPage() {
         </button>
       ) : null}
 
+
+      <GuideDialog
+        open={guideOpen}
+        context={guideContext()}
+        start={guideStart ?? guideReply("greeting", guideContext())}
+        onAction={runGuideAction}
+        onClose={() => setGuideOpen(false)}
+      />
+
+      {guideNote && !guideOpen ? (
+        <div className="pg-guide-note" role="status">
+          <span aria-hidden="true">👒</span>
+          <span>
+            <strong>ナギ</strong>
+            {guideNote}
+          </span>
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={() => {
+              setGuideNote(null);
+              if (guideTaskRef.current?.kind === "go") worldRef.current?.setWaypoint(null);
+              guideTaskRef.current = null;
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      ) : null}
 
       <footer className="pg-bottom">
         {/* Who you are lives in the Menu; the HUD only speaks up when the

@@ -24,6 +24,7 @@ import type { Interactable } from "./types";
 export type WorldTarget =
   | { kind: "person"; principalId: string; name: string }
   | { kind: "mascot"; mascotId: string; name: string }
+  | { kind: "guide"; guideId: string; name: string }
   | { kind: "app" | "activity"; ref: string; title: string }
   | { kind: "seat"; seatId: string; title: string };
 
@@ -35,6 +36,8 @@ export function targetKey(target: WorldTarget | null): string {
       return `person:${target.principalId}`;
     case "mascot":
       return `mascot:${target.mascotId}`;
+    case "guide":
+      return `guide:${target.guideId}`;
     case "seat":
       return `seat:${target.seatId}`;
     default:
@@ -59,6 +62,13 @@ export function interactableCandidate(
     if (!ref) return null;
     return {
       item: { kind: cardKind, ref, title: interactable.title },
+      position: interactable.anchor,
+      maxDistance: interactable.maxDistance,
+    };
+  }
+  if (interactable.kind === "guide") {
+    return {
+      item: { kind: "guide", guideId: interactable.id, name: interactable.title },
       position: interactable.anchor,
       maxDistance: interactable.maxDistance,
     };

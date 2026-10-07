@@ -76,6 +76,14 @@ export interface WorldHandle {
   reactAtTarget(emoji: string): void;
   /** Interact with whatever is currently centred. */
   interactWithTarget(): void;
+  /** Have the World's guide say something (no-op where there is none). */
+  guideSay(text: string): void;
+  /** Mark a destination on the ground with a light column; null clears it. */
+  setWaypoint(point: { x: number; z: number } | null): void;
+  /** Where the viewer is and which way they face — for the guide's lessons. */
+  viewerPose(): { x: number; y: number; z: number; yaw: number; pitch: number };
+  /** People currently rendered near the viewer (within `radius` metres). */
+  peopleNear(radius: number): number;
   /** Mobile joystick, normalized to [-1, 1]. */
   setJoystick(x: number, y: number): void;
   /** Touch jump button. Keyboard uses Space. */
@@ -163,6 +171,7 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
 
   function mountWorld(next: WorldId): void {
     const definition = resolveOpenableWorld(next);
+    clearWaypoint();
     for (const avatar of avatars.values()) disposeAvatar(engine.scene, avatar);
     avatars.clear();
     for (const exhibit of exhibits) exhibit.dispose();
@@ -180,6 +189,7 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
   }
 
   engine.onFrame(({ now, dt, movement, pose, forward }) => {
+    pulseWaypoint(now);
     if (engine.cadenceDue(now)) {
       hooks.onTransform({
         world_id: worldId,
@@ -258,8 +268,57 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
     );
   }
 
+  // ---- waypoint: a soft light column and a ring where the guide is taking you
+  let waypoint: THREE.Group | null = null;
+  const waypointParts: { dispose(): void }[] = [];
+  function clearWaypoint(): void {
+    waypoint?.removeFromParent();
+    waypoint = null;
+    for (const part of waypointParts.splice(0)) part.dispose();
+  }
+  function placeWaypoint(point: { x: number; z: number }): void {
+    clearWaypoint();
+    const group = new THREE.Group();
+    group.name = "waypoint";
+    const ground = engine.world?.groundY?.(point.x, point.z) ?? 0;
+    group.position.set(point.x, ground, point.z);
+    const beamGeometry = new THREE.CylinderGeometry(0.45, 0.6, 9, 32, 1, true);
+    beamGeometry.translate(0, 4.5, 0);
+    const beamMaterial = new THREE.MeshBasicMaterial({
+      color: "#ffe8b0",
+      transparent: true,
+      opacity: 0.22,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const ringGeometry = new THREE.RingGeometry(0.75, 0.95, 48);
+    ringGeometry.rotateX(-Math.PI / 2);
+    ringGeometry.translate(0, 0.04, 0);
+    const ringMaterial = new THREE.MeshBasicMaterial({
+      color: "#fff3cf",
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+    });
+    const beam = new THREE.Mesh(beamGeometry, beamMaterial);
+    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+    group.add(beam, ring);
+    waypointParts.push(beamGeometry, beamMaterial, ringGeometry, ringMaterial);
+    engine.scene.add(group);
+    waypoint = group;
+  }
+  function pulseWaypoint(now: number): void {
+    if (!waypoint || engine.reducedMotion) return;
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.004);
+    const ring = waypoint.children[1] as THREE.Mesh;
+    ring.scale.setScalar(1 + pulse * 0.25);
+    (ring.material as THREE.MeshBasicMaterial).opacity = 0.55 + pulse * 0.35;
+  }
+
   const handle: WorldHandle = {
     dispose() {
+      clearWaypoint();
       for (const avatar of avatars.values()) disposeAvatar(engine.scene, avatar);
       avatars.clear();
       for (const exhibit of exhibits) exhibit.dispose();
@@ -321,9 +380,37 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
       rebuildExhibits();
     },
 
+    guideSay(text) {
+      engine.world?.guide?.say(text);
+    },
+
+    setWaypoint(point) {
+      if (point) placeWaypoint(point);
+      else clearWaypoint();
+    },
+
+    viewerPose() {
+      const camera = engine.camera;
+      return {
+        x: camera.position.x,
+        y: camera.position.y,
+        z: camera.position.z,
+        yaw: camera.rotation.y,
+        pitch: camera.rotation.x,
+      };
+    },
+
+    peopleNear(radius) {
+      let count = 0;
+      for (const avatar of avatars.values()) {
+        if (avatar.group.position.distanceTo(engine.camera.position) < radius + 1.65) count += 1;
+      }
+      return count;
+    },
+
     reactAtTarget(emoji) {
       if (!FACE_REACTION_EMOJI.has(emoji)) return;
-      if (currentTarget?.kind === "mascot") {
+      if (currentTarget?.kind === "mascot" || currentTarget?.kind === "guide") {
         // A mascot is scenery. Letting a wave "succeed" at one would tell the
         // sender somebody received it when nobody did.
         hooks.onError("That's a guide. Try reacting to someone nearby.");
