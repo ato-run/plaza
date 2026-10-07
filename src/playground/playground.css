@@ -441,6 +441,8 @@ kbd {
   background: #fffef3;
   box-shadow: 0 4px 20px rgba(24, 58, 52, 0.15);
   font-size: 13px;
+  /* Above the menu: a refused rename is reported while the menu is open. */
+  z-index: 8;
 }
 
 .pg-notice button {
