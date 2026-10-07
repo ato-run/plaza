@@ -68,6 +68,7 @@ export interface Engine {
 }
 
 const REACTION_KEYS = ["Digit1", "Digit2", "Digit3", "Digit4"];
+const NO_COLLIDERS: readonly Collider[] = [];
 
 export function createEngine(options: EngineOptions): Engine {
   const { host } = options;
@@ -142,7 +143,6 @@ export function createEngine(options: EngineOptions): Engine {
   let world: WorldRuntime | null = null;
   let worldRoot: THREE.Group | null = null;
   let worldBuilder: WorldBuilder | null = null;
-  let colliders: readonly Collider[] = [];
   let groundY: ((x: number, z: number) => number) | null = null;
 
   const on = (
@@ -299,7 +299,9 @@ export function createEngine(options: EngineOptions): Engine {
     const moved = resolveMovement(
       { x: camera.position.x, z: camera.position.z },
       { vx, vz },
-      colliders,
+      // Read live: `world.ts` replaces the array when exhibits arrive, so a
+      // copy taken at mount would never see a plinth.
+      world?.colliders ?? NO_COLLIDERS,
       undefined,
       WORLD_RADIUS,
     );
@@ -343,7 +345,6 @@ export function createEngine(options: EngineOptions): Engine {
     world = null;
     worldRoot = null;
     worldBuilder = null;
-    colliders = [];
     groundY = null;
   }
 
@@ -384,7 +385,6 @@ export function createEngine(options: EngineOptions): Engine {
         reducedMotion,
       });
       world = runtime;
-      colliders = runtime.colliders;
       groundY = runtime.groundY ?? null;
 
       camera.position.set(
