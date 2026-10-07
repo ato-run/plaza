@@ -31,7 +31,7 @@ const SWELL: ReadonlyArray<readonly [number, number, number, number]> = [
 ];
 
 /** Wind ripples: a tileable normal map baked once, sampled at two scales. */
-function rippleTexture(size = 256): THREE.DataTexture {
+export function rippleTexture(size = 256): THREE.DataTexture {
   // Sum of waves with integer frequencies wraps exactly at the tile edge.
   const waves: [number, number, number, number][] = [];
   let seed = 7;

@@ -37,6 +37,69 @@
       "dimensions": "1024x1024"
     },
     {
+      "path": "assets/beach/textures/coral_fort_wall_01_diff_1k.jpg",
+      "bytes": 970931,
+      "sha256": "dbf0580d0e366928dd526a8582c62cb2f6846b637efac9449103492fdc50a480",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coral_fort_wall_01/coral_fort_wall_01_diff_1k.jpg",
+      "dimensions": "1024x1024"
+    },
+    {
+      "path": "assets/beach/textures/coral_fort_wall_01_nor_1k.jpg",
+      "bytes": 1302195,
+      "sha256": "f9bd555147e1481a9911ac001d45a805d6a092fa0ca5b9c0a62a8a5b1a8c3c8a",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coral_fort_wall_01/coral_fort_wall_01_nor_gl_1k.jpg",
+      "dimensions": "1024x1024"
+    },
+    {
+      "path": "assets/beach/textures/coral_fort_wall_01_arm_1k.jpg",
+      "bytes": 872300,
+      "sha256": "2b1740558bb024802de8201821158bf55902e82b75b44ec34b82c05e3c2971c2",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coral_fort_wall_01/coral_fort_wall_01_arm_1k.jpg",
+      "dimensions": "1024x1024"
+    },
+    {
+      "path": "assets/beach/textures/coral_stone_wall_diff_1k.jpg",
+      "bytes": 794995,
+      "sha256": "45e4bcbb4ac9b03d34896f5d9f9be26dd0b5ec9f161484f6284b949dc25f9f31",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coral_stone_wall/coral_stone_wall_diff_1k.jpg",
+      "dimensions": "1024x1024"
+    },
+    {
+      "path": "assets/beach/textures/coral_stone_wall_nor_1k.jpg",
+      "bytes": 1199284,
+      "sha256": "300d9860306a5acb521cc2034ede5dc70cf26886b05f6a7d5a41f0a2d412f05c",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coral_stone_wall/coral_stone_wall_nor_gl_1k.jpg",
+      "dimensions": "1024x1024"
+    },
+    {
+      "path": "assets/beach/textures/coral_stone_wall_arm_1k.jpg",
+      "bytes": 700780,
+      "sha256": "600fe41279a31d35440456602fecf5ae5cad095b820846b8d6034523d552bd72",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coral_stone_wall/coral_stone_wall_arm_1k.jpg",
+      "dimensions": "1024x1024"
+    },
+    {
+      "path": "assets/beach/textures/fine_grained_wood_diff_1k.jpg",
+      "bytes": 336305,
+      "sha256": "d171f45ef01bc6e239b00dfaa4961bcd27f7d8e93e3962da3bd3d0ce703d802c",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/fine_grained_wood/fine_grained_wood_col_1k.jpg",
+      "dimensions": "1024x1024"
+    },
+    {
+      "path": "assets/beach/textures/fine_grained_wood_nor_1k.jpg",
+      "bytes": 193626,
+      "sha256": "ba95eadc009818e161d0f753191f1bacc3fc861e593be0bc6d82b437f9ec8044",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/fine_grained_wood/fine_grained_wood_nor_gl_1k.jpg",
+      "dimensions": "1024x1024"
+    },
+    {
+      "path": "assets/beach/textures/fine_grained_wood_arm_1k.jpg",
+      "bytes": 247999,
+      "sha256": "3928796cc98b380cd254dc67e9246e60027ef349edb5f75033cc6f3b34572450",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/fine_grained_wood/fine_grained_wood_arm_1k.jpg",
+      "dimensions": "1024x1024"
+    },
+    {
       "path": "assets/beach/textures/rock-block_color_512.jpg",
       "bytes": 58593,
       "sha256": "540a95d2018b68e1ef4b0fb0c7b741babed4f168ab99dea608de2bc28721204e",
@@ -145,6 +208,164 @@
       "sha256": "5064a77b769d65dc28057a3c3af052bd3871195ce0e47cab5a0134e9d6854b96",
       "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/namaqualand_boulder_04/namaqualand_boulder_04_1k.gltf",
       "triangles": 236,
+      "textures": "none (separate JPEG)"
+    },
+    {
+      "path": "assets/beach/textures/Lantern_01_brass_color_512.jpg",
+      "bytes": 34733,
+      "sha256": "2e41fcc8dbb8fb9719e0b44ce3e4bc1d29ee95f5f3900882fec022a23d55ef65",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/Lantern_01/Lantern_01_1k.gltf",
+      "dimensions": "512x512"
+    },
+    {
+      "path": "assets/beach/textures/Lantern_01_brass_normal_512.jpg",
+      "bytes": 50532,
+      "sha256": "a1fb1dd25ebc671e8d5c5d40bfb85c52fa71981df4a0c7cf50ec23cf4c351b0f",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/Lantern_01/Lantern_01_1k.gltf",
+      "dimensions": "512x512"
+    },
+    {
+      "path": "assets/beach/textures/Lantern_01_brass_orm_512.jpg",
+      "bytes": 91395,
+      "sha256": "104a070e35c5239c4c1793da28e73b16333d25dc7f532d31fa92f95c3e81b05c",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/Lantern_01/Lantern_01_1k.gltf",
+      "dimensions": "512x512"
+    },
+    {
+      "path": "assets/beach/textures/Lantern_01_glass_color_512.jpg",
+      "bytes": 34733,
+      "sha256": "2e41fcc8dbb8fb9719e0b44ce3e4bc1d29ee95f5f3900882fec022a23d55ef65",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/Lantern_01/Lantern_01_1k.gltf",
+      "dimensions": "512x512"
+    },
+    {
+      "path": "assets/beach/textures/Lantern_01_glass_normal_512.jpg",
+      "bytes": 50532,
+      "sha256": "a1fb1dd25ebc671e8d5c5d40bfb85c52fa71981df4a0c7cf50ec23cf4c351b0f",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/Lantern_01/Lantern_01_1k.gltf",
+      "dimensions": "512x512"
+    },
+    {
+      "path": "assets/beach/textures/Lantern_01_glass_orm_512.jpg",
+      "bytes": 91395,
+      "sha256": "104a070e35c5239c4c1793da28e73b16333d25dc7f532d31fa92f95c3e81b05c",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/Lantern_01/Lantern_01_1k.gltf",
+      "dimensions": "512x512"
+    },
+    {
+      "path": "assets/beach/models/lantern.glb",
+      "bytes": 182516,
+      "sha256": "351e2a32712dc907ca6ecbd6bcdc88ac137275f9bad46ccd8d2ddc8eb565d436",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/Lantern_01/Lantern_01_1k.gltf",
+      "triangles": 6279,
+      "textures": "none (separate JPEG)"
+    },
+    {
+      "path": "assets/beach/textures/anthurium_botany_01_color_1024.jpg",
+      "bytes": 84814,
+      "sha256": "c8250235b37d3a0d436cfbc2c4bdd9979ad472b4a5989dd2bf2395bea8360d25",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/anthurium_botany_01/anthurium_botany_01_1k.gltf",
+      "dimensions": "1024x1024"
+    },
+    {
+      "path": "assets/beach/textures/anthurium_botany_01_normal_1024.jpg",
+      "bytes": 137459,
+      "sha256": "6045a36bdccf8763346f67a79e929e3d3673d0525426935484021f3f4cfec68c",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/anthurium_botany_01/anthurium_botany_01_1k.gltf",
+      "dimensions": "1024x1024"
+    },
+    {
+      "path": "assets/beach/textures/anthurium_botany_01_orm_1024.jpg",
+      "bytes": 143258,
+      "sha256": "cdd13f03ee6ab60d646e5f9d4e36f3c8fe04e88fca4b1f3c5354ab518f2e8ab3",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/anthurium_botany_01/anthurium_botany_01_1k.gltf",
+      "dimensions": "1024x1024"
+    },
+    {
+      "path": "assets/beach/textures/anthurium_botany_01_alpha_1k.jpg",
+      "bytes": 97557,
+      "sha256": "e5b9ecaac2d883426558911cb969e20628334c598cf5175bb9fac54fa8899a02",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/anthurium_botany_01/anthurium_botany_01_alpha_1k.jpg",
+      "dimensions": "1024x1024"
+    },
+    {
+      "path": "assets/beach/models/anthurium.glb",
+      "bytes": 244404,
+      "sha256": "f9f9c15b59a43f607eef556f42490f97c5641882c1933c006d8949df3e3a6e7f",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/anthurium_botany_01/anthurium_botany_01_1k.gltf",
+      "triangles": 8046,
+      "textures": "none (separate JPEG)"
+    },
+    {
+      "path": "assets/beach/textures/calathea_orbifolia_01_color_1024.jpg",
+      "bytes": 99812,
+      "sha256": "fcf3e45ac6050f1c06bf6c6f1f2e2e65ae5246eb264be8e3fe4bda1ab3ae50c1",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/calathea_orbifolia_01/calathea_orbifolia_01_1k.gltf",
+      "dimensions": "1024x1024"
+    },
+    {
+      "path": "assets/beach/textures/calathea_orbifolia_01_normal_1024.jpg",
+      "bytes": 163012,
+      "sha256": "ffb2f99474d81159cb9d2988d6beb7a010a0c9aa74eec311857aa738f388ac34",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/calathea_orbifolia_01/calathea_orbifolia_01_1k.gltf",
+      "dimensions": "1024x1024"
+    },
+    {
+      "path": "assets/beach/textures/calathea_orbifolia_01_orm_1024.jpg",
+      "bytes": 104634,
+      "sha256": "a1a701833de8ab163160f983462b735619060ff95489a37834c45c1523e15403",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/calathea_orbifolia_01/calathea_orbifolia_01_1k.gltf",
+      "dimensions": "1024x1024"
+    },
+    {
+      "path": "assets/beach/textures/calathea_orbifolia_01_alpha_1k.jpg",
+      "bytes": 90300,
+      "sha256": "87df73e371414ea692bec15627a807883f6e11dc6c256cd1586e1e568a993d85",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/calathea_orbifolia_01/calathea_orbifolia_01_alpha_1k.jpg",
+      "dimensions": "1024x1024"
+    },
+    {
+      "path": "assets/beach/models/calathea.glb",
+      "bytes": 175088,
+      "sha256": "66b6d3f680c93a4f01fc1d4832f1d7eadd149f2806d0853bd4bac36054f71f05",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/calathea_orbifolia_01/calathea_orbifolia_01_1k.gltf",
+      "triangles": 6669,
+      "textures": "none (separate JPEG)"
+    },
+    {
+      "path": "assets/beach/textures/fern_02_color_1024.jpg",
+      "bytes": 64271,
+      "sha256": "d67041b442a8c36ff1d365fdd51b478fbbf1f1fb0368a13ceb4a49dfad86a85f",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fern_02/fern_02_1k.gltf",
+      "dimensions": "1024x1024"
+    },
+    {
+      "path": "assets/beach/textures/fern_02_normal_1024.jpg",
+      "bytes": 106202,
+      "sha256": "cd6493bb24b3a1b0a98a623202843bc8a751321e0500838028db0650ffcc02db",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fern_02/fern_02_1k.gltf",
+      "dimensions": "1024x1024"
+    },
+    {
+      "path": "assets/beach/textures/fern_02_orm_1024.jpg",
+      "bytes": 104672,
+      "sha256": "085ea731111a2aa2ac651ac429e3882b47530ae5257ff86b81bcc7636f8ed796",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fern_02/fern_02_1k.gltf",
+      "dimensions": "1024x1024"
+    },
+    {
+      "path": "assets/beach/textures/fern_02_alpha_1k.jpg",
+      "bytes": 246038,
+      "sha256": "4d8c4d57373651e500f1a3b2071cd59d2d9cc031bc30ff73bc8a5d2b2c91571a",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fern_02/fern_02_alpha_1k.jpg",
+      "dimensions": "1024x1024"
+    },
+    {
+      "path": "assets/beach/models/fern.glb",
+      "bytes": 179532,
+      "sha256": "236369cfd27b518c53b0483ae5c609dba935e4c20b3c3c87789514129a7eb81d",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fern_02/fern_02_1k.gltf",
+      "triangles": 6232,
       "textures": "none (separate JPEG)"
     }
   ]

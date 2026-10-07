@@ -29,7 +29,6 @@ import {
   CENTRAL_LANTERNS,
   CENTRAL_MASCOTS,
 } from "./centralGeometry";
-import { bench, lantern } from "../primitives";
 import { BODY_RADIUS, circle } from "../collision";
 import { createBeachAssets, LoadAborted } from "../beach/assets";
 import { createCoastUniforms } from "../beach/coastShader";
@@ -38,6 +37,7 @@ import { grassPlacements, OUTER_PALMS, placeRocks, sceneryColliders } from "../b
 import { beachWalkable, terrainHeight, waterDepth } from "../beach/coast";
 import { createTerrain } from "../beach/terrain";
 import { createVegetation } from "../beach/vegetation";
+import { buildPlazaProps } from "../beach/props";
 import {
   animateMascot,
   createMascot,
@@ -162,93 +162,24 @@ export const centralPlaza: WorldDefinition = {
         ...CENTRAL_TREES.map(([x, z, scale]) => ({ x, z, scale })),
         ...OUTER_PALMS,
       ],
-      CENTRAL_PLANTERS,
+      [],
       quality.scatter ? grassPlacements(220) : [],
       reducedMotion,
     );
     vegetation.objects.forEach((object) => builder.track(object));
     vegetation.resources.forEach((resource) => builder.trackResource(resource));
 
-    // ---- fountain --------------------------------------------------------
-    // Weathered coral stone round a pool that takes the sky's reflection.
-    builder.cylinder(FOUNTAIN_RADIUS, 0.55, "#d3c3a3", 0, 0.27, 0, 40);
-    builder.cylinder(FOUNTAIN_RADIUS - 0.28, 0.5, "#e2d6bd", 0, 0.34, 0, 40);
-    builder.cylinder(FOUNTAIN_RADIUS - 0.55, 0.12, "#c2b08f", 0, 0.55, 0, 40);
-
-    const water = builder.cylinder(
-      FOUNTAIN_RADIUS - 0.62,
-      0.06,
-      "#1f7480",
-      0,
-      0.54,
-      0,
-      40,
-    );
-    water.material = builder.material("#1f7480", {
-      transparent: true,
-      opacity: 0.9,
-      roughness: 0.04,
-    });
-    water.castShadow = false;
-
-    builder.cylinder(0.5, 1.15, "#d9cbaf", 0, 1.1, 0, 20);
-    builder.cylinder(1.1, 0.2, "#e2d6bd", 0, 1.75, 0, 24);
-    const jet = builder.cylinder(0.12, 1.5, "#a9d8de", 0, 2.5, 0, 12);
-    jet.material = builder.material("#a9d8de", {
-      basic: true,
-      transparent: true,
-      opacity: 0.5,
-    });
-    jet.castShadow = false;
-
-    // Droplets: one Points object, not 80 meshes. A particle system is the
-    // one place where a single draw call buys visible life cheaply.
-    const dropletCount = 90;
-    const positions = new Float32Array(dropletCount * 3);
-    const seeds = new Float32Array(dropletCount);
-    for (let i = 0; i < dropletCount; i += 1) {
-      seeds[i] = Math.random();
-      positions[i * 3] = 0;
-      positions[i * 3 + 1] = 2;
-      positions[i * 3 + 2] = 0;
-    }
-    const dropletGeometry = new THREE.BufferGeometry();
-    dropletGeometry.setAttribute(
-      "position",
-      new THREE.BufferAttribute(positions, 3),
-    );
-    const droplets = new THREE.Points(
-      dropletGeometry,
-      new THREE.PointsMaterial({
-        color: "#e8f6f8",
-        size: 0.07,
-        transparent: true,
-        opacity: 0.85,
-      }),
-    );
-    builder.track(droplets);
-
     // ---- furniture -------------------------------------------------------
-    // Planters keep their footprint (and collider): coral-stone boxes of
-    // dark soil, the ferns in them come from the vegetation above.
-    for (const [x, z] of CENTRAL_PLANTERS) {
-      builder.box(3, 0.55, 1.3, "#cbb995", x, 0.27, z);
-      builder.box(2.8, 0.12, 1.1, "#4f4232", x, 0.57, z);
-    }
-
-    // Benches face the fountain: a ring of seats around a middle is what
-    // makes a square somewhere to wait rather than somewhere to cross.
-    for (const [x, z, rotation] of CENTRAL_BENCHES) {
-      bench(builder, x, z, rotation, {
-        seat: "#a3896c",
-        back: "#b09878",
-        legs: "#5a4a3a",
-      });
-    }
-
-    for (const [x, z] of CENTRAL_LANTERNS) {
-      lantern(builder, x, z, "#ffe2a8", 3.1, "#6b563f");
-    }
+    // The fountain, benches facing it, planters and lamp posts: modelled
+    // with scanned surfaces, on the same footprints and colliders as before.
+    const props = buildPlazaProps(builder, {
+      benches: CENTRAL_BENCHES,
+      planters: CENTRAL_PLANTERS,
+      lanterns: CENTRAL_LANTERNS,
+      assets,
+      signal,
+      reducedMotion,
+    });
 
     // ---- mascots ---------------------------------------------------------
     for (const spec of CENTRAL_MASCOTS) {
@@ -302,25 +233,7 @@ export const centralPlaza: WorldDefinition = {
           animateMascot(mascot, now, reducedMotion);
           updateMascotBubble(mascot, now);
         }
-        if (reducedMotion) return;
-        // Droplets arc out of the jet and fall back into the basin, each on
-        // its own phase so the spray never pulses as one body.
-        const attribute = dropletGeometry.getAttribute(
-          "position",
-        ) as THREE.BufferAttribute;
-        for (let i = 0; i < dropletCount; i += 1) {
-          const seed = seeds[i];
-          const t = ((now * 0.0009 + seed) % 1) * 1.6;
-          const angle = seed * Math.PI * 2;
-          const spread = t * 0.9;
-          attribute.setXYZ(
-            i,
-            Math.cos(angle) * spread,
-            3.15 - 9.81 * 0.5 * t * t * 0.42,
-            Math.sin(angle) * spread,
-          );
-        }
-        attribute.needsUpdate = true;
+        props.update(seconds);
       },
 
       dispose() {
