@@ -11,9 +11,15 @@
  * `assets/beach-manifest.json`. Licences and modifications are listed in
  * `ASSET_LICENSES.md`.
  *
- * Mesh reduction uses `@gltf-transform/cli` through `npx`, pinned below,
- * rather than a devDependency: `npm ci` runs inside the capsule build, and
- * its native image dependency has no business there.
+ * Mesh reduction uses `@gltf-transform/cli` through `npx`, and texture
+ * extraction `@gltf-transform/core` installed into the cache, both pinned
+ * below, rather than devDependencies: `npm ci` runs inside the capsule build,
+ * and their native image dependency has no business there.
+ *
+ * Rock models ship as geometry-only GLB plus separate same-origin JPEGs. A
+ * GLB with embedded images makes three's GLTFLoader fetch them from `blob:`
+ * URLs, which the static-web CSP (`connect-src 'self'`) refuses in Chrome and
+ * Firefox — and widening every app's CSP for that is not on the table.
  */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -25,12 +31,14 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CACHE = join(ROOT, "assets/source/cache");
 const OUT = join(ROOT, "public/assets/beach");
 const GLTF_TRANSFORM = "@gltf-transform/cli@4.2.1";
+const GLTF_CORE = "@gltf-transform/core@4.2.1";
+const TOOLS = join(CACHE, "tools");
 const POLY_HAVEN = "https://api.polyhaven.com/files";
 
 /** Ground textures: Poly Haven slug → maps → distributed name. 1K JPEG as published. */
@@ -111,6 +119,25 @@ for (const { slug, maps } of TEXTURES) {
   }
 }
 
+// Core API for the extraction step, installed once into the cache.
+if (!existsSync(join(TOOLS, "node_modules/@gltf-transform/core"))) {
+  mkdirSync(TOOLS, { recursive: true });
+  execFileSync("npm", ["install", "--no-save", "--prefix", TOOLS, GLTF_CORE], {
+    stdio: ["ignore", "ignore", "inherit"],
+  });
+}
+const { NodeIO } = await import(
+  pathToFileURL(join(TOOLS, "node_modules/@gltf-transform/core/dist/index.modern.js")).href
+);
+const io = new NodeIO();
+
+/** Write a texture's encoded bytes out; true when the slot had one. */
+function extract(texture, file) {
+  if (!texture) return false;
+  writeFileSync(file, Buffer.from(texture.getImage()));
+  return true;
+}
+
 for (const { slug, name, lod0, lod1 } of ROCKS) {
   const listing = (await files(slug)).gltf["1k"].gltf;
   const base = join(CACHE, slug);
@@ -129,12 +156,27 @@ for (const { slug, name, lod0, lod1 } of ROCKS) {
     gltf("simplify", work, work, "--ratio", String(ratio), "--error", "0.05");
     gltf("resize", work, work, "--width", String(size), "--height", String(size));
     gltf("prune", work, work);
-    gltf("dedup", work, target);
-    record(target, {
-      source: listing.url,
-      triangles: triangles(target),
-      texture_size: `${size}x${size}`,
-    });
+    gltf("dedup", work, work);
+
+    const document = await io.read(work);
+    const material = document.getRoot().listMaterials()[0];
+    if (lod === "lod0") {
+      // One set of maps per rock, shared by both levels (same UVs).
+      for (const [slot, texture] of [
+        ["color", material.getBaseColorTexture()],
+        ["normal", material.getNormalTexture()],
+        ["orm", material.getMetallicRoughnessTexture()],
+      ]) {
+        const file = join(OUT, "textures", `${name}_${slot}_${size}.jpg`);
+        if (extract(texture, file)) {
+          record(file, { source: listing.url, dimensions: `${size}x${size}` });
+        }
+      }
+    }
+    for (const texture of document.getRoot().listTextures()) texture.dispose();
+    for (const each of document.getRoot().listMaterials()) each.dispose();
+    await io.write(target, document);
+    record(target, { source: listing.url, triangles: triangles(target), textures: "none (separate JPEG)" });
   }
 }
 

@@ -7,6 +7,10 @@
  * the World's abort signal; a decode that completes after the World was
  * unmounted is disposed on arrival instead of being attached to anything.
  *
+ * Images are always plain same-origin image requests. (A GLB with embedded
+ * images would make GLTFLoader fetch `blob:` URLs, which the static-web CSP
+ * refuses; the rock models ship their maps as separate JPEGs instead.)
+ *
  * Failures degrade per file. A 404 that the SPA fallback answers with
  * `index.html` and a 200 fails image decode or the glTF magic check, so a
  * success here means real bytes of the right kind, not just a status code.
@@ -38,7 +42,12 @@ async function withRetry<T>(signal: AbortSignal, attempt: () => Promise<T>): Pro
 }
 
 export interface BeachAssets {
-  texture(name: string, colorSpace: THREE.ColorSpace): Promise<THREE.Texture>;
+  /** `flipY: false` for maps authored against glTF UVs (origin top-left). */
+  texture(
+    name: string,
+    colorSpace: THREE.ColorSpace,
+    options?: { flipY?: boolean },
+  ): Promise<THREE.Texture>;
   model(name: string): Promise<GLTF>;
 }
 
@@ -50,7 +59,7 @@ export function createBeachAssets(
   const models = new GLTFLoader();
 
   return {
-    async texture(name, colorSpace) {
+    async texture(name, colorSpace, options = {}) {
       const texture = await withRetry(signal, () =>
         textures.loadAsync(`${BASE}textures/${name}`),
       );
@@ -59,6 +68,7 @@ export function createBeachAssets(
         throw new LoadAborted();
       }
       texture.colorSpace = colorSpace;
+      texture.flipY = options.flipY ?? true;
       texture.wrapS = THREE.RepeatWrapping;
       texture.wrapT = THREE.RepeatWrapping;
       texture.anisotropy = anisotropy;

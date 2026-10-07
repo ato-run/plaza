@@ -10,7 +10,7 @@ import * as THREE from "three";
 import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 import { FLAT_RADIUS, shoreDistance, shoreZ, terrainHeight } from "./coast";
-import type { BeachAssets } from "./assets";
+import { disposeGltf, LoadAborted, type BeachAssets } from "./assets";
 import { seeded, type PalmPlacement } from "./vegetation";
 
 /** Palms beyond the plaza edge, framing the view both ways along the coast. */
@@ -92,8 +92,9 @@ function meshOf(gltf: GLTF): THREE.Mesh | null {
 
 /**
  * Load the rock models and place them under `parent`. Each rock is a LOD:
- * the reduced scan within 45m, a coarser one beyond. A rock whose model
- * fails to load is simply absent.
+ * the reduced scan within 45m, a coarser one beyond, both sharing one
+ * material whose maps arrive as separate JPEGs. A rock whose files fail to
+ * load is simply absent.
  */
 export async function placeRocks(
   parent: THREE.Object3D,
@@ -102,36 +103,66 @@ export async function placeRocks(
   track: (resource: { dispose(): void }) => void,
 ): Promise<void> {
   const kinds: RockKind[] = ["block", "slab", "round"];
-  const loaded = new Map<RockKind, [THREE.Mesh, THREE.Mesh]>();
+  const loaded = new Map<RockKind, [THREE.BufferGeometry, THREE.BufferGeometry, THREE.Material]>();
   await Promise.all(
     kinds.map(async (kind) => {
       try {
-        const [near, far] = await Promise.all([
-          assets.model(`${MODEL[kind]}-lod0.glb`),
-          assets.model(`${MODEL[kind]}-lod1.glb`),
-        ]);
-        const nearMesh = meshOf(near);
-        const farMesh = meshOf(far);
-        if (!nearMesh || !farMesh) return;
-        // Normalise: unit size, resting on its lowest point, centred.
-        for (const mesh of [nearMesh, farMesh]) {
-          mesh.geometry.computeBoundingBox();
-          const box = mesh.geometry.boundingBox as THREE.Box3;
-          const size = box.getSize(new THREE.Vector3());
-          const centre = box.getCenter(new THREE.Vector3());
-          mesh.geometry.translate(-centre.x, -box.min.y, -centre.z);
-          const largest = Math.max(size.x, size.z);
-          mesh.geometry.scale(1 / largest, 1 / largest, 1 / largest);
-          mesh.geometry.computeBoundingSphere();
-          const material = mesh.material as THREE.MeshStandardMaterial;
-          material.envMapIntensity = 0.9;
-          track(mesh.geometry);
-          track(material);
-          for (const value of Object.values(material)) {
-            if (value instanceof THREE.Texture) track(value);
+        const name = MODEL[kind];
+        const settled = await Promise.allSettled([
+          assets.model(`${name}-lod0.glb`),
+          assets.model(`${name}-lod1.glb`),
+          // glTF UVs: no vertical flip.
+          assets.texture(`${name}_color_512.jpg`, THREE.SRGBColorSpace, { flipY: false }),
+          assets.texture(`${name}_normal_512.jpg`, THREE.NoColorSpace, { flipY: false }),
+          assets.texture(`${name}_orm_512.jpg`, THREE.NoColorSpace, { flipY: false }),
+        ] as const);
+        const failed = settled.find((result) => result.status === "rejected");
+        if (failed || signal.aborted) {
+          // All or nothing per rock: release whatever did arrive.
+          for (const result of settled) {
+            if (result.status !== "fulfilled") continue;
+            if (result.value instanceof THREE.Texture) result.value.dispose();
+            else disposeGltf(result.value);
           }
+          throw failed ? (failed as PromiseRejectedResult).reason : new LoadAborted();
         }
-        loaded.set(kind, [nearMesh, farMesh]);
+        const [near, far, color, normal, orm] = settled.map(
+          (result) => (result as PromiseFulfilledResult<unknown>).value,
+        ) as [GLTF, GLTF, THREE.Texture, THREE.Texture, THREE.Texture];
+        const geometries = [meshOf(near), meshOf(far)].map((mesh) => {
+          if (!mesh) return null;
+          // Loader-made default materials are not used; only the geometry is.
+          (mesh.material as THREE.Material).dispose();
+          return mesh.geometry;
+        });
+        const material = new THREE.MeshStandardMaterial({
+          map: color,
+          normalMap: normal,
+          // As GLTFLoader does for maps without tangents.
+          normalScale: new THREE.Vector2(1, -1),
+          roughnessMap: orm,
+          aoMap: orm,
+          aoMapIntensity: 0.8,
+          roughness: 1,
+          metalness: 0,
+        });
+        track(material);
+        for (const texture of [color, normal, orm]) track(texture);
+        if (!geometries[0] || !geometries[1]) return;
+        // Normalise: unit size, resting on its lowest point, centred — the
+        // same transform for both levels, measured on the detailed one.
+        geometries[0].computeBoundingBox();
+        const box = geometries[0].boundingBox as THREE.Box3;
+        const size = box.getSize(new THREE.Vector3());
+        const centre = box.getCenter(new THREE.Vector3());
+        const largest = Math.max(size.x, size.z);
+        for (const geometry of geometries as THREE.BufferGeometry[]) {
+          geometry.translate(-centre.x, -box.min.y, -centre.z);
+          geometry.scale(1 / largest, 1 / largest, 1 / largest);
+          geometry.computeBoundingSphere();
+          track(geometry);
+        }
+        loaded.set(kind, [geometries[0], geometries[1], material]);
       } catch (error) {
         if ((error as Error).message !== "load_aborted") {
           console.warn(`[plaza] rock model unavailable: ${kind}`);
@@ -142,11 +173,12 @@ export async function placeRocks(
   if (signal.aborted) return;
 
   const place = (kind: RockKind, x: number, z: number, size: number, yaw: number, sink: number) => {
-    const pair = loaded.get(kind);
-    if (!pair) return;
+    const rock = loaded.get(kind);
+    if (!rock) return;
+    const [near, far, material] = rock;
     const lod = new THREE.LOD();
-    for (const [index, source] of pair.entries()) {
-      const mesh = new THREE.Mesh(source.geometry, source.material);
+    for (const [index, geometry] of [near, far].entries()) {
+      const mesh = new THREE.Mesh(geometry, material);
       mesh.castShadow = index === 0;
       mesh.receiveShadow = true;
       lod.addLevel(mesh, index === 0 ? 0 : 45);

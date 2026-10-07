@@ -37,52 +37,115 @@
       "dimensions": "1024x1024"
     },
     {
+      "path": "assets/beach/textures/rock-block_color_512.jpg",
+      "bytes": 58593,
+      "sha256": "540a95d2018b68e1ef4b0fb0c7b741babed4f168ab99dea608de2bc28721204e",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/namaqualand_boulder_03/namaqualand_boulder_03_1k.gltf",
+      "dimensions": "512x512"
+    },
+    {
+      "path": "assets/beach/textures/rock-block_normal_512.jpg",
+      "bytes": 75003,
+      "sha256": "730122943b080b53cda5e2399c0f8fb66f282959bebed7ea4e8b14549428b9c6",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/namaqualand_boulder_03/namaqualand_boulder_03_1k.gltf",
+      "dimensions": "512x512"
+    },
+    {
+      "path": "assets/beach/textures/rock-block_orm_512.jpg",
+      "bytes": 39087,
+      "sha256": "4f807388e87718e7d84c1f6a66fa55f6fb8f2730f2fdffcd3bd48b7d01bf8ead",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/namaqualand_boulder_03/namaqualand_boulder_03_1k.gltf",
+      "dimensions": "512x512"
+    },
+    {
       "path": "assets/beach/models/rock-block-lod0.glb",
-      "bytes": 206888,
-      "sha256": "5cb3c2d93b0825f711269e740db4b81f663002456e6546ac1553715421eb659e",
+      "bytes": 33456,
+      "sha256": "4d83eda2f43c48947a092b47ce959abd98aadb75bb9f019960afcb0e85ee558c",
       "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/namaqualand_boulder_03/namaqualand_boulder_03_1k.gltf",
       "triangles": 1295,
-      "texture_size": "512x512"
+      "textures": "none (separate JPEG)"
     },
     {
       "path": "assets/beach/models/rock-block-lod1.glb",
-      "bytes": 51436,
-      "sha256": "44891aac7a5ea8d4cfccf2f54817648ccf82983e8f2400097fe7b7d2e16900eb",
+      "bytes": 8548,
+      "sha256": "e1419e5da7346564c919b6786f926a83e369a193bcc75db2d6ef8dc8f9fe71c2",
       "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/namaqualand_boulder_03/namaqualand_boulder_03_1k.gltf",
       "triangles": 259,
-      "texture_size": "256x256"
+      "textures": "none (separate JPEG)"
+    },
+    {
+      "path": "assets/beach/textures/rock-slab_color_512.jpg",
+      "bytes": 60922,
+      "sha256": "7e560713c09b818a5e30d3249c3d04ad2ade3e4766079c816fd9e511977b5f82",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/namaqualand_boulder_05/namaqualand_boulder_05_1k.gltf",
+      "dimensions": "512x512"
+    },
+    {
+      "path": "assets/beach/textures/rock-slab_normal_512.jpg",
+      "bytes": 102176,
+      "sha256": "5edd0b4388b51ec9b16b62810c6f5f20b5ae38488cd927fcaa25282d3831e27e",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/namaqualand_boulder_05/namaqualand_boulder_05_1k.gltf",
+      "dimensions": "512x512"
+    },
+    {
+      "path": "assets/beach/textures/rock-slab_orm_512.jpg",
+      "bytes": 61199,
+      "sha256": "33cbb694ac46984354c9300262281b15df1c2303db1a7e5939b79bf07c92232a",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/namaqualand_boulder_05/namaqualand_boulder_05_1k.gltf",
+      "dimensions": "512x512"
     },
     {
       "path": "assets/beach/models/rock-slab-lod0.glb",
-      "bytes": 268196,
-      "sha256": "b78c511840e27a01d2e4824cfe646128b498f4c0ff334be0f60732e7db9aa6f9",
+      "bytes": 43100,
+      "sha256": "fa773672d371001e887868cbfaf8b8baf8a931ce44325da0c7de85eaec2958f3",
       "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/namaqualand_boulder_05/namaqualand_boulder_05_1k.gltf",
       "triangles": 1612,
-      "texture_size": "512x512"
+      "textures": "none (separate JPEG)"
     },
     {
       "path": "assets/beach/models/rock-slab-lod1.glb",
-      "bytes": 72112,
-      "sha256": "de0f439e6486648bd687d0a80b3daa650845f30fe0fc5e92580d585799ea3109",
+      "bytes": 12312,
+      "sha256": "eb4e96a33d40b6538976f6b27716f0f41bc7b863d201fa489346d8d757d57458",
       "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/namaqualand_boulder_05/namaqualand_boulder_05_1k.gltf",
       "triangles": 358,
-      "texture_size": "256x256"
+      "textures": "none (separate JPEG)"
+    },
+    {
+      "path": "assets/beach/textures/rock-round_color_512.jpg",
+      "bytes": 60863,
+      "sha256": "2df6079810300739c7a2eb8e8922e08ba774576e98a7b80f09bfbf6f8474b9e9",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/namaqualand_boulder_04/namaqualand_boulder_04_1k.gltf",
+      "dimensions": "512x512"
+    },
+    {
+      "path": "assets/beach/textures/rock-round_normal_512.jpg",
+      "bytes": 81742,
+      "sha256": "8aebad22508c18dfd97dd2701c44cd647f1465e4dbc0e8d8a49ead545c053e02",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/namaqualand_boulder_04/namaqualand_boulder_04_1k.gltf",
+      "dimensions": "512x512"
+    },
+    {
+      "path": "assets/beach/textures/rock-round_orm_512.jpg",
+      "bytes": 42662,
+      "sha256": "34b909b3e49f96553c305cd9cbb08cb40e1017e8ec5611b8141d052b5600f915",
+      "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/namaqualand_boulder_04/namaqualand_boulder_04_1k.gltf",
+      "dimensions": "512x512"
     },
     {
       "path": "assets/beach/models/rock-round-lod0.glb",
-      "bytes": 216244,
-      "sha256": "d8da0a15d5a27d1d1d74ea2c3d1fb4960546081d3bc59157764255724002efbd",
+      "bytes": 30228,
+      "sha256": "79be7d2d594d70ec7c4521494200c64c1bf65b9fd789147d6142a39531b1eaed",
       "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/namaqualand_boulder_04/namaqualand_boulder_04_1k.gltf",
       "triangles": 1180,
-      "texture_size": "512x512"
+      "textures": "none (separate JPEG)"
     },
     {
       "path": "assets/beach/models/rock-round-lod1.glb",
-      "bytes": 53872,
-      "sha256": "2333c130877c54077572eeff9d4a0f250e598d186ac1db96153fa378b2f24cc4",
+      "bytes": 7828,
+      "sha256": "5064a77b769d65dc28057a3c3af052bd3871195ce0e47cab5a0134e9d6854b96",
       "source": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/namaqualand_boulder_04/namaqualand_boulder_04_1k.gltf",
       "triangles": 236,
-      "texture_size": "256x256"
+      "textures": "none (separate JPEG)"
     }
   ]
 }
