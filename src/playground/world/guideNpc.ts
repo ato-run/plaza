@@ -1,5 +1,5 @@
 /**
- * ナギ, standing by the entrance: a person-shaped guide, not a mascot.
+ * Nagi, standing by the entrance: a person-shaped guide, not a mascot.
  *
  * Built in the plaza's own blocky avatar language (so she reads as someone
  * you can talk to), but marked as staff: a straw hat, a satchel, a teal
@@ -13,7 +13,7 @@ import * as THREE from "three";
 import type { WorldBuilder } from "./primitives";
 
 export const GUIDE_ID = "nagi";
-export const GUIDE_NAME = "ナギ";
+export const GUIDE_NAME = "Nagi";
 const GREET_DISTANCE = 6;
 const LOOK_DISTANCE = 8;
 
@@ -66,8 +66,11 @@ export function createGuideNpc(
   head.position.y = 1.55;
   group.add(head);
   builder.box(0.4, 0.4, 0.38, skin, 0, 0, 0, head);
-  builder.box(0.43, 0.14, 0.42, hair, 0, 0.18, -0.02, head);
-  builder.box(0.42, 0.26, 0.08, hair, 0, 0.02, -0.18, head);
+  // Hair. No face of it may share a plane with the head's faces, or the
+  // two flicker against each other (z-fighting): the fringe stops 2cm
+  // behind the face plane, and every outer face sits clear of the head's.
+  builder.box(0.43, 0.14, 0.4, hair, 0, 0.18, -0.03, head);
+  builder.box(0.424, 0.26, 0.06, hair, 0, 0.02, -0.19, head);
   builder.box(0.045, 0.05, 0.012, "#2f3530", -0.09, 0.01, 0.196, head);
   builder.box(0.045, 0.05, 0.012, "#2f3530", 0.09, 0.01, 0.196, head);
   builder.box(0.12, 0.025, 0.012, "#b8735f", 0, -0.1, 0.196, head);
@@ -81,7 +84,7 @@ export function createGuideNpc(
   crown.castShadow = true;
   builder.track(crown, head);
   const band = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.232, 0.232, 0.04, 24),
+    new THREE.CylinderGeometry(0.245, 0.245, 0.04, 24),
     builder.material(uniform),
   );
   band.position.y = 0.29;

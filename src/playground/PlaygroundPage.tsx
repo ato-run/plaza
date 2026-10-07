@@ -212,11 +212,11 @@ export default function PlaygroundPage() {
   }, []);
   const identityTimeoutRef = useRef<number | undefined>(undefined);
 
-  // ---- ナギ: conversation, lessons and journeys ---------------------------
+  // ---- Nagi: conversation, lessons and journeys ---------------------------
   const [guideOpen, setGuideOpen] = useState(false);
   const [guideStart, setGuideStart] = useState<GuideReply | null>(null);
   const guideTalkedRef = useRef(false);
-  /** A line from ナギ shown in the HUD while you practise or travel. */
+  /** A line from Nagi shown in the HUD while you practise or travel. */
   const [guideNote, setGuideNote] = useState<string | null>(null);
   const guideTaskRef = useRef<
     | { kind: "practice"; skill: PracticeSkill; from: { x: number; y: number; z: number; yaw: number }; done?: boolean }
@@ -228,7 +228,7 @@ export default function PlaygroundPage() {
     guideTalkedRef.current = true;
     // First time: her greeting. After that: straight to "how can I help".
     setGuideStart(
-      first ? null : { text: "はい、どうしましたか？ 何でも聞いてください。", choices: [...ENTRY_CHOICES] },
+      first ? null : { text: "Hello again. What can I help you with?", choices: [...ENTRY_CHOICES] },
     );
     setGuideOpen(true);
   }, []);
@@ -1081,13 +1081,13 @@ export default function PlaygroundPage() {
     worldRef.current?.setExhibits(exhibits);
   }, [exhibits]);
 
-  // ---- ナギ ---------------------------------------------------------------
+  // ---- Nagi ---------------------------------------------------------------
 
   const isTouch =
     typeof window !== "undefined" &&
     (window.matchMedia?.("(pointer: coarse)").matches ?? false);
 
-  /** What ナギ can see of your situation when she answers. */
+  /** What Nagi can see of your situation when she answers. */
   const guideContext = (): GuideContext => ({
     touch: isTouch,
     lookMode,
@@ -1115,7 +1115,7 @@ export default function PlaygroundPage() {
       if (!place) return;
       guideTaskRef.current = { kind: "go", place: place.id };
       world.setWaypoint({ x: place.x, z: place.z });
-      setGuideNote(`${place.label}へ向かいましょう。光の柱が目印です。`);
+      setGuideNote(`Let's head to ${place.label}. Follow the column of light.`);
       world.requestPointerLock();
       return;
     }
@@ -1143,9 +1143,9 @@ export default function PlaygroundPage() {
         const distance = Math.hypot(pose.x - place.x, pose.z - place.z);
         if (distance <= place.radius) {
           world.setWaypoint(null);
-          finish(`着きました。${SUCCESS_LINE}`);
+          finish(`We're here. ${SUCCESS_LINE}`);
         } else {
-          setGuideNote(`${place.label}まで あと ${Math.round(distance)}m`);
+          setGuideNote(`${Math.round(distance)} m to ${place.label}`);
         }
         return;
       }
@@ -1381,7 +1381,7 @@ export default function PlaygroundPage() {
         <div className="pg-guide-note" role="status">
           <span aria-hidden="true">👒</span>
           <span>
-            <strong>ナギ</strong>
+            <strong>Nagi</strong>
             {guideNote}
           </span>
           <button

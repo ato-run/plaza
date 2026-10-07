@@ -41,7 +41,7 @@ import { buildPlazaProps } from "../beach/props";
 import { createGuideNpc, GUIDE_ID, GUIDE_NAME } from "../guideNpc";
 import { reply } from "../../guide/nagi";
 
-/** ナギ stands just ahead of the entrance, turned toward whoever arrives. */
+/** Nagi stands just ahead of the entrance, turned toward whoever arrives. */
 const GUIDE_SPOT = { x: 2.6, z: 8.4 } as const;
 import {
   animateMascot,

@@ -1,5 +1,5 @@
 /**
- * ナギ — Plaza's guide. What she says, and what each answer lets you do next.
+ * Nagi — Plaza's guide. What she says, and what each answer lets you do next.
  *
  * Pure and local: no network, no model. Every reply is chosen from what is
  * actually implemented and from the visitor's situation right now (touch or
@@ -26,7 +26,7 @@ export interface GuideContext {
 export type GuideAction =
   | { kind: "node"; node: GuideNodeId }
   | { kind: "practice"; skill: PracticeSkill }
-  /** Pick a place: she describes it and offers 「出発」. */
+  /** Pick a place: she describes it and offers "Let's go". */
   | { kind: "place"; place: PlaceId }
   /** Set off: the page shows the way there. */
   | { kind: "go"; place: PlaceId }
@@ -72,12 +72,16 @@ export interface Place {
   description: string;
 }
 
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 /** Where she can take you. Coordinates are the plaza's (see centralGeometry). */
 export const PLACES: readonly Place[] = [
-  { id: "fountain", label: "噴水", x: 0, z: 0, radius: 4.6, description: "広場の真ん中です。ジャンプすると縁に乗れます" },
-  { id: "exhibits", label: "アプリの展示", x: 0, z: -12, radius: 3.2, description: "みんなが共有したアプリが並ぶ場所です" },
-  { id: "shore", label: "波打ち際", x: 0, z: -35, radius: 3, description: "砂浜を下りて、浅瀬まで入れます" },
-  { id: "entrance", label: "入口", x: 0, z: 11, radius: 2.5, description: "最初に立っていた場所です" },
+  { id: "fountain", label: "the fountain", x: 0, z: 0, radius: 4.6, description: "It's in the middle of the plaza, and you can jump up onto its rim" },
+  { id: "exhibits", label: "the app exhibits", x: 0, z: -12, radius: 3.2, description: "That's where the apps people have shared are on display" },
+  { id: "shore", label: "the water's edge", x: 0, z: -35, radius: 3, description: "You can walk down the beach and wade into the shallows" },
+  { id: "entrance", label: "the entrance", x: 0, z: 11, radius: 2.5, description: "It's where you first arrived" },
 ];
 
 export const PLACE_BY_ID = new Map(PLACES.map((place) => [place.id, place]));
@@ -86,64 +90,63 @@ const go = (node: GuideNodeId): GuideAction => ({ kind: "node", node });
 
 /** The three ways into a conversation, offered whenever she has nothing else to suggest. */
 export const ENTRY_CHOICES: readonly GuideChoice[] = [
-  { label: "Plazaって？", action: go("about") },
-  { label: "使い方を教えて", action: go("whatCan") },
-  { label: "場所を案内して", action: go("places") },
+  { label: "What is Plaza?", action: go("about") },
+  { label: "How do I use it?", action: go("whatCan") },
+  { label: "Show me around", action: go("places") },
 ];
 
-const MORE_CONTROLS: GuideChoice = { label: "ほかの操作", action: go("controls") };
-const TO_PLACES: GuideChoice = { label: "場所を案内して", action: go("places") };
+const MORE_CONTROLS: GuideChoice = { label: "Other controls", action: go("controls") };
+const TO_PLACES: GuideChoice = { label: "Show me around", action: go("places") };
 
 export function reply(node: GuideNodeId, context: GuideContext): GuideReply {
   switch (node) {
     case "greeting":
       return {
-        text: "ようこそ、Plazaへ。案内役のナギです。使い方や場所について、気軽に聞いてください。",
+        text: "Welcome to Plaza. I'm Nagi, your guide. Feel free to ask me how things work or where to go.",
         choices: [...ENTRY_CHOICES],
       };
     case "about":
       return {
-        text: "Plazaは、みんなが集まる一つの広場です。歩いて、近くの人と話して、展示されたアプリを試せます。",
+        text: "Plaza is one shared place where everyone gathers. You can walk around, talk to people nearby, and try the apps on display.",
         choices: [
-          { label: "使い方を教えて", action: go("whatCan") },
+          { label: "How do I use it?", action: go("whatCan") },
           TO_PLACES,
-          { label: "何ができる？", action: go("whatCan") },
         ],
       };
     case "whatCan":
       return {
-        text: "できることを紹介しますね。まずは、操作方法と場所の案内、どちらから知りたいですか？",
+        text: "Let me show you what you can do. Would you like to start with the controls, or with a tour of the place?",
         choices: [
-          { label: "操作方法", action: go("controls") },
-          { label: "場所の案内", action: go("places") },
-          { label: "話す・投稿する", action: go("talk") },
+          { label: "The controls", action: go("controls") },
+          { label: "A tour", action: go("places") },
+          { label: "Talking and posting", action: go("talk") },
         ],
       };
     case "controls":
       return {
-        text: "どの操作で困っていますか？ 近いものを選ぶか、そのまま文章で教えてください。",
+        text: "Which control is giving you trouble? Pick the closest one, or just tell me in your own words.",
         choices: [
-          { label: "移動", action: go("move") },
-          { label: "見回す", action: go("look") },
-          { label: "ジャンプ", action: go("jump") },
-          { label: "話す・投稿", action: go("talk") },
-          { label: "リアクション", action: go("react") },
+          { label: "Moving", action: go("move") },
+          { label: "Looking around", action: go("look") },
+          { label: "Jumping", action: go("jump") },
+          { label: "Talking", action: go("talk") },
+          { label: "Reactions", action: go("react") },
           ...(context.hasTimesOfDay
-            ? [{ label: "時間帯・ワールド", action: go("timeAndWorld") }]
+            ? [{ label: "Time of day and worlds", action: go("timeAndWorld") }]
             : []),
-          { label: "名前・アイコン", action: go("profile") },
+          { label: "Name and icon", action: go("profile") },
         ],
       };
     case "move": {
       const how = context.touch
-        ? "左下のスティックを倒すと歩けます。"
+        ? "Push the stick at the bottom left to walk."
         : context.engaged
-          ? "W・A・S・D キーで歩けます。"
-          : "画面を一度クリックしてから、W・A・S・D キーで歩けます。";
+          ? "Use the W, A, S and D keys to walk."
+          : "Click the view once, then use the W, A, S and D keys to walk.";
       return {
-        text: `${how}砂浜を下りて、浅瀬まで入れますよ。`,
+        text: `${how} You can walk down the beach and right into the shallows.`,
         choices: [
-          { label: "やってみる", action: { kind: "practice", skill: "move" } },
+          { label: "Let me try", action: { kind: "practice", skill: "move" } },
           MORE_CONTROLS,
           TO_PLACES,
         ],
@@ -151,25 +154,25 @@ export function reply(node: GuideNodeId, context: GuideContext): GuideReply {
     }
     case "look": {
       const how = context.touch
-        ? "画面の右側をドラッグすると、周りを見渡せます。"
+        ? "Drag on the right side of the screen to look around."
         : context.lookMode === "drag"
-          ? "画面をドラッグすると、周りを見渡せます。"
-          : "画面をクリックしたあと、マウスを動かすと周りを見渡せます。Esc で解除できます。";
+          ? "Drag across the view to look around."
+          : "Click the view, then move the mouse to look around. Press Esc to let go.";
       return {
         text: how,
         choices: [
-          { label: "やってみる", action: { kind: "practice", skill: "look" } },
+          { label: "Let me try", action: { kind: "practice", skill: "look" } },
           MORE_CONTROLS,
         ],
       };
     }
     case "jump": {
-      const how = context.touch ? "右の Jump ボタン" : "Space キー";
+      const how = context.touch ? "Tap the Jump button on the right" : "Press Space";
       return {
-        text: `${how}でジャンプできます。歩きながらでも跳べて、噴水の縁にも乗れます。`,
+        text: `${how} to jump. It works while you walk, too, and you can land on the fountain's rim.`,
         choices: [
-          { label: "やってみる", action: { kind: "practice", skill: "jump" } },
-          { label: "噴水へ行く", action: { kind: "place", place: "fountain" } },
+          { label: "Let me try", action: { kind: "practice", skill: "jump" } },
+          { label: "Go to the fountain", action: { kind: "place", place: "fountain" } },
           MORE_CONTROLS,
         ],
       };
@@ -177,72 +180,72 @@ export function reply(node: GuideNodeId, context: GuideContext): GuideReply {
     case "talk":
       if (!context.canPost) {
         return {
-          text: "話したり投稿したりするには、サインインが必要です。右下の「Sign in to talk」から進めます。",
+          text: "You'll need to sign in to talk or post. Use \"Sign in to talk\" at the bottom right.",
           choices: [MORE_CONTROLS, TO_PLACES],
         };
       }
       return {
         text: context.touch
-          ? "右下の Talk を押すと、近くの人に話しかけられます。送った言葉はみんなに残ります。"
-          : "右下の Talk か Enter キーで、近くの人に話しかけられます。送った言葉はみんなに残ります。",
+          ? "Tap Talk at the bottom right to talk to people nearby. What you send stays for everyone to see."
+          : "Press Talk at the bottom right, or Enter, to talk to people nearby. What you send stays for everyone to see.",
         choices: [
-          { label: "やってみる", action: { kind: "practice", skill: "talk" } },
-          { label: "リアクション", action: go("react") },
+          { label: "Let me try", action: { kind: "practice", skill: "talk" } },
+          { label: "Reactions", action: go("react") },
           MORE_CONTROLS,
         ],
       };
     case "react": {
       const how = context.touch
-        ? "話したい人の方を向いて、右下の絵文字を押すとリアクションできます。"
-        : "話したい人の方を向いて、右下の絵文字か 1〜4 キーでリアクションできます。";
-      const nobody = context.peopleNearby === 0 ? "今は近くに人がいないので、誰か来たら試してみてください。" : "";
+        ? "Face someone and tap an emoji at the bottom right to react."
+        : "Face someone and press an emoji at the bottom right, or keys 1 to 4, to react.";
+      const nobody = context.peopleNearby === 0 ? " There's no one nearby right now, so give it a try when someone comes by." : "";
       return {
         text: how + nobody,
         choices: [
           ...(context.peopleNearby > 0
-            ? [{ label: "やってみる", action: { kind: "practice", skill: "react" } } as GuideChoice]
+            ? [{ label: "Let me try", action: { kind: "practice", skill: "react" } } as GuideChoice]
             : []),
-          { label: "話す・投稿", action: go("talk") },
+          { label: "Talking", action: go("talk") },
           MORE_CONTROLS,
         ],
       };
     }
     case "timeAndWorld":
       return {
-        text: `Menu（${context.touch ? "左上" : "M キー"}）から、時間帯の昼・夕焼けや、ワールドを切り替えられます。時間帯はあなたの画面だけに反映されます。`,
+        text: `From the Menu (${context.touch ? "top left" : "or the M key"}) you can switch between Day and Sunset, and change worlds. The time of day only changes your own view.`,
         choices: [
-          { label: "Menu を開く", action: { kind: "menu", section: "world" } },
+          { label: "Open the Menu", action: { kind: "menu", section: "world" } },
           MORE_CONTROLS,
         ],
       };
     case "profile":
       return {
-        text: "Menu の「You」で、名前とアイコンを変えられます。",
+        text: "You can change your name and icon under \"You\" in the Menu.",
         choices: [
-          { label: "Menu を開く", action: { kind: "menu", section: "profile" } },
+          { label: "Open the Menu", action: { kind: "menu", section: "profile" } },
           MORE_CONTROLS,
         ],
       };
     case "places":
       return {
-        text: "どこへ案内しましょうか？",
+        text: "Where would you like to go?",
         choices: PLACES.filter((place) => place.id !== "exhibits" || context.exhibits > 0).map(
-          (place) => ({ label: place.label, action: { kind: "place", place: place.id } }),
+          (place) => ({ label: capitalize(place.label), action: { kind: "place", place: place.id } }),
         ),
       };
     case "unclear":
       return {
-        text: "もう少し教えてください。使い方の質問ですか？ それとも、場所を探していますか？",
+        text: "Could you tell me a little more? Is it a question about how things work, or are you looking for a place?",
         choices: [
-          { label: "使い方", action: go("controls") },
-          { label: "場所", action: go("places") },
-          { label: "Plazaって？", action: go("about") },
+          { label: "How things work", action: go("controls") },
+          { label: "A place", action: go("places") },
+          { label: "What is Plaza?", action: go("about") },
         ],
       };
     case "thanks":
       return {
-        text: "どういたしまして。ほかにも知りたいことがあれば、声をかけてください。",
-        choices: [{ label: "閉じる", action: { kind: "close" } }, ...ENTRY_CHOICES],
+        text: "You're welcome. If there's anything else you'd like to know, just come and ask.",
+        choices: [{ label: "Close", action: { kind: "close" } }, ...ENTRY_CHOICES],
       };
   }
 }
@@ -250,29 +253,29 @@ export function reply(node: GuideNodeId, context: GuideContext): GuideReply {
 /** Before setting off for a place: what it is, and the go button. */
 export function departure(place: Place): GuideReply {
   return {
-    text: `${place.label}ですね。${place.description}。そこまで案内しますね。準備ができたら「出発」を押してください。`,
+    text: `${capitalize(place.label)}. ${place.description}. I'll take you there. Press "Let's go" when you're ready.`,
     choices: [
-      { label: "出発", action: { kind: "go", place: place.id } },
-      { label: "ほかの場所", action: go("places") },
+      { label: "Let's go", action: { kind: "go", place: place.id } },
+      { label: "Somewhere else", action: go("places") },
     ],
   };
 }
 
 /** What she says once you have done what you came for. */
-export const SUCCESS_LINE = "できましたね。ほかにも知りたいことがあれば、声をかけてください。";
+export const SUCCESS_LINE = "You did it. If there's anything else you'd like to know, just come and ask.";
 
 /** What each practice asks you to do, shown while you try. */
 export const PRACTICE_PROMPTS: Record<PracticeSkill, string> = {
-  move: "少し歩いてみてください。",
-  look: "ぐるっと周りを見渡してみてください。",
-  jump: "その場でジャンプしてみてください。",
-  talk: "話しかける画面を開いてみてください。",
-  react: "近くの人にリアクションを送ってみてください。",
+  move: "Try walking a few steps.",
+  look: "Try looking all the way around.",
+  jump: "Try a jump right where you are.",
+  talk: "Try opening the talk box.",
+  react: "Try sending a reaction to someone nearby.",
 };
 
 /** Phrases → where the conversation should go. Order matters: specific first. */
 const INTENTS: readonly [RegExp, GuideNodeId | { place: PlaceId }][] = [
-  [/ありがと|thank|助かった|わかった|できた/i, "thanks"],
+  [/thank|cheers|got it|ありがと|助かった|わかった|できた/i, "thanks"],
   [/噴水|fountain/i, { place: "fountain" }],
   [/展示|アプリ|app|exhibit/i, { place: "exhibits" }],
   [/海|浜|波|浅瀬|beach|sea|shore/i, { place: "shore" }],
@@ -284,9 +287,9 @@ const INTENTS: readonly [RegExp, GuideNodeId | { place: PlaceId }][] = [
   [/リアクション|絵文字|react|emoji/i, "react"],
   [/時間|夕焼け|夜|昼|ワールド|world|sunset|time/i, "timeAndWorld"],
   [/名前|アイコン|プロフィール|name|avatar|profile/i, "profile"],
-  [/場所|どこ|案内|行き|連れて|place|where|guide/i, "places"],
-  [/できる|使い方|操作|わからない|困|教えて|how|what can|help/i, "whatCan"],
-  [/plaza|プラザ|ここ(は|って)|なに|何/i, "about"],
+  [/where|place|go to|take me|tour|show me around|場所|どこ|案内|行き|連れて/i, "places"],
+  [/what can|how|help|stuck|lost|confus|don'?t know|できる|使い方|操作|わからない|困|教えて/i, "whatCan"],
+  [/plaza|what is this|what'?s this|プラザ|ここ(は|って)|なに|何/i, "about"],
 ];
 
 export type GuideIntent = { node: GuideNodeId } | { place: PlaceId };

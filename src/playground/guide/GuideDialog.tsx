@@ -1,5 +1,5 @@
 /**
- * Talking with ナギ: her line, the choices that follow from it, and a field
+ * Talking with Nagi: her line, the choices that follow from it, and a field
  * for asking in your own words. The world pauses while it is open; picking a
  * lesson or a destination closes it and hands you back to the plaza.
  */
@@ -74,7 +74,7 @@ export function GuideDialog({ open, context, start, onAction, onClose }: GuideDi
       ref={panelRef}
       className="pg-guide"
       role="dialog"
-      aria-label="ナギと話す"
+      aria-label="Talk with Nagi"
       tabIndex={-1}
       onKeyDown={(event) => {
         event.stopPropagation();
@@ -86,8 +86,8 @@ export function GuideDialog({ open, context, start, onAction, onClose }: GuideDi
           👒
         </span>
         <div>
-          <strong>ナギ</strong>
-          <small>案内</small>
+          <strong>Nagi</strong>
+          <small>Guide</small>
         </div>
         <button type="button" className="pg-menu-close" onClick={onClose} aria-label="Close">
           ✕
@@ -108,12 +108,12 @@ export function GuideDialog({ open, context, start, onAction, onClose }: GuideDi
         <input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder="質問を入力（例：何ができる？）"
-          aria-label="ナギに質問する"
+          placeholder="Ask anything (e.g. What can I do here?)"
+          aria-label="Ask Nagi"
           maxLength={80}
         />
         <button type="submit" disabled={!draft.trim()}>
-          送る
+          Ask
         </button>
       </form>
     </div>
