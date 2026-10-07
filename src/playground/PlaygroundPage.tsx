@@ -1160,6 +1160,7 @@ export default function PlaygroundPage() {
             : null
         }
         canEditIdentity={connected && !runnerAvailableRef.current && !!viewer}
+        connected={connected}
         onSaveIdentity={saveIdentity}
         worlds={WORLDS}
         worldId={worldId}
@@ -1231,15 +1232,13 @@ export default function PlaygroundPage() {
 
 
       <footer className="pg-bottom">
-        <div className="pg-identity">
-          <span className="pg-identity-emoji" aria-hidden="true">
-            {viewer?.animal_emoji ?? "…"}
-          </span>
-          <div>
-            <strong>{viewer?.display_name ?? "Connecting"}</strong>
-            <small>{connected ? "In the plaza" : "Reconnecting…"}</small>
+        {/* Who you are lives in the Menu; the HUD only speaks up when the
+            connection is not there. */}
+        {connected ? null : (
+          <div className="pg-connection" role="status">
+            {viewer ? "Reconnecting…" : "Connecting…"}
           </div>
-        </div>
+        )}
         {/* Everything you say to people, in one place: reactions to whoever
             you face, and the message composer. */}
         <div className="pg-talk">

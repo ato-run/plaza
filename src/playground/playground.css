@@ -278,39 +278,8 @@ kbd {
   right: 24px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
-}
-
-.pg-identity {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.pg-identity-emoji {
-  flex-shrink: 0;
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.75);
-  border: 2px solid rgba(255, 255, 255, 0.44);
-  font-size: 18px;
-}
-
-.pg-identity strong {
-  display: block;
-  font-size: 14px;
-  color: #183b31;
-}
-
-.pg-identity small {
-  display: block;
-  margin-top: 3px;
-  font-size: 11px;
-  color: #3e6557;
 }
 
 .pg-chat-open {
@@ -837,24 +806,8 @@ kbd {
   }
 }
 
-/* Phones: the name gives way (ellipsis) before the Talk pill wraps. */
+/* Phones: a tighter Talk pill. */
 @media (max-width: 480px) {
-  .pg-identity {
-    min-width: 0;
-  }
-
-  .pg-identity > div {
-    min-width: 0;
-  }
-
-  .pg-identity strong,
-  .pg-identity small {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
   .pg-talk .pg-chat-open {
     padding: 10px 14px;
     font-size: 13px;
@@ -863,4 +816,26 @@ kbd {
   .pg-bottom {
     gap: 10px;
   }
+}
+
+.pg-connection {
+  margin-right: auto;
+  padding: 9px 14px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  color: #8a5a2e;
+}
+
+.pg-menu-self {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+
+.pg-menu-self small {
+  font-size: 12px;
+  color: #607668;
 }

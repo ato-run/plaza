@@ -28,6 +28,7 @@ interface PlazaMenuProps {
   identity: { displayName: string; animalEmoji: string } | null;
   /** False when this room cannot take a name change (offline, AI lane). */
   canEditIdentity: boolean;
+  connected: boolean;
   onSaveIdentity(displayName: string, animalEmoji: string): void;
   worlds: readonly WorldDefinition[];
   worldId: WorldId;
@@ -112,6 +113,11 @@ export function PlazaMenu(props: PlazaMenuProps) {
 
         <section data-section="profile">
           <h3>You</h3>
+          <p className="pg-menu-self">
+            <span aria-hidden="true">{identity?.animalEmoji ?? "…"}</span>
+            <strong>{identity?.displayName ?? "Connecting"}</strong>
+            <small>{props.connected ? "In the plaza" : "Reconnecting…"}</small>
+          </p>
           <form
             className="pg-profile"
             onSubmit={(event) => {
