@@ -33,7 +33,8 @@ import { bench, lantern } from "../primitives";
 import { createBeachAssets, LoadAborted } from "../beach/assets";
 import { createCoastUniforms } from "../beach/coastShader";
 import { createOcean } from "../beach/ocean";
-import { grassPlacements, OUTER_PALMS, placeRocks } from "../beach/scenery";
+import { grassPlacements, OUTER_PALMS, placeRocks, sceneryColliders } from "../beach/scenery";
+import { beachWalkable, terrainHeight, waterDepth } from "../beach/coast";
 import { createTerrain } from "../beach/terrain";
 import { createVegetation } from "../beach/vegetation";
 import {
@@ -76,7 +77,9 @@ export const centralPlaza: WorldDefinition = {
   available: true,
 
   build({ builder, labelHost, reducedMotion, quality, lighting, signal }): WorldRuntime {
-    const colliders = centralColliders();
+    // The shared colliders (the AI Controller and server use the same list)
+    // plus local ones for rocks and palms on the open beach.
+    const colliders = [...centralColliders(), ...sceneryColliders()];
     const interactables: Interactable[] = [];
     const mascots: Mascot[] = [];
 
@@ -219,6 +222,15 @@ export const centralPlaza: WorldDefinition = {
       // North edge, facing back into the plaza, so the fountain keeps the
       // middle and the boards are still the first thing beyond it.
       softwareSlots: CENTRAL_SOFTWARE_SLOTS,
+
+      // The plaza is flat at 0; beyond it people may walk the beach down
+      // into the shallows, slower once the water is above the ankles.
+      walkable: beachWalkable,
+      groundY: terrainHeight,
+      speedScale: (x, z) => {
+        const depth = waterDepth(x, z);
+        return depth <= 0.1 ? 1 : depth >= 0.5 ? 0.55 : 1 - (depth - 0.1) * 1.125;
+      },
 
       update(_dt, now) {
         // One local clock drives water, sand and wind; nothing about the sea

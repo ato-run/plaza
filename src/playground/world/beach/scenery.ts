@@ -9,7 +9,8 @@
 import * as THREE from "three";
 import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 
-import { FLAT_RADIUS, shoreDistance, shoreZ, terrainHeight } from "./coast";
+import { circle, type Collider } from "../collision";
+import { beachWalkable, FLAT_RADIUS, shoreDistance, shoreZ, terrainHeight } from "./coast";
 import { disposeGltf, LoadAborted, type BeachAssets } from "./assets";
 import { seeded, type PalmPlacement } from "./vegetation";
 
@@ -58,6 +59,25 @@ const DUNE_ROCKS: readonly { kind: RockKind; x: number; z: number; size: number;
   { kind: "slab", x: 30, z: 25, size: 2.2, yaw: 2.2 },
   { kind: "block", x: 9, z: 37, size: 2.0, yaw: 4.0 },
 ];
+
+/**
+ * Colliders for set dressing that stands on the walkable beach: rock bodies
+ * and palm trunks. Local only — beyond the shared disc the AI never walks.
+ */
+export function sceneryColliders(): Collider[] {
+  const out: Collider[] = [];
+  const add = (x: number, z: number, r: number) => {
+    // Anything whose footprint touches walkable ground gets a body.
+    const reachable = [0, 1, 2, 3].some((i) =>
+      beachWalkable(x + Math.cos(i * 1.57) * (r + 0.5), z + Math.sin(i * 1.57) * (r + 0.5)),
+    );
+    if (reachable) out.push(circle(x, z, r));
+  };
+  for (const rock of ROCKS) add(rock.x, shoreZ(rock.x) + rock.inland, rock.size * 0.42);
+  for (const rock of DUNE_ROCKS) add(rock.x, rock.z, rock.size * 0.42);
+  for (const palm of OUTER_PALMS) add(palm.x, palm.z, 0.5);
+  return out;
+}
 
 /** Dune grass tufts: [x, z, groundY], seeded, only on dry sand away from the plaza. */
 export function grassPlacements(count: number): (readonly [number, number, number])[] {

@@ -125,6 +125,29 @@ export function terrainHeight(x: number, z: number): number {
   return height * edge;
 }
 
+/** Deepest water people wade into: about knee to thigh height. */
+export const WADE_DEPTH = 0.7;
+/** How far inland from the waterline the walkable beach runs. */
+export const BEACH_WALK_BAND = 20;
+/** Walking stays well inside the transform limits every client accepts (±64). */
+export const WALK_EXTENT = 60;
+
+/**
+ * Where people may walk: the plaza disc, plus the beach from the dunes'
+ * foot down into the shallows, along the coast in both directions.
+ */
+export function beachWalkable(x: number, z: number): boolean {
+  if (Math.hypot(x, z) < WORLD_RADIUS) return true;
+  if (Math.abs(x) > WALK_EXTENT || Math.abs(z) > WALK_EXTENT) return false;
+  if (shoreDistance(x, z) > BEACH_WALK_BAND) return false;
+  return SEA_LEVEL - terrainHeight(x, z) <= WADE_DEPTH;
+}
+
+/** Still-water depth above the ground at a point (negative on dry land). */
+export function waterDepth(x: number, z: number): number {
+  return SEA_LEVEL - terrainHeight(x, z);
+}
+
 /**
  * A baked view of the coast for the GPU: per texel, ground height, signed
  * shore distance and the landward direction. RGBA float, row-major, +x right,

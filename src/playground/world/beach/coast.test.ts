@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  beachWalkable,
   BEACH_WIDTH,
+  WADE_DEPTH,
+  waterDepth,
   bakeCoastField,
   FLAT_RADIUS,
   SEA_LEVEL,
@@ -53,5 +56,19 @@ describe("coast", () => {
     const index = (row * 32 + column) * 4;
     expect(field.data[index]).toBeCloseTo(terrainHeight(x, z), 4);
     expect(field.data[index + 1]).toBeCloseTo(shoreDistance(x, z), 4);
+  });
+
+  it("lets people walk from the plaza down into the shallows, and no deeper", () => {
+    // Straight out from the spawn toward the sea: continuous until too deep.
+    let z = 0;
+    while (beachWalkable(0, z - 0.25)) z -= 0.25;
+    expect(waterDepth(0, z)).toBeGreaterThan(0.3);
+    expect(waterDepth(0, z)).toBeLessThanOrEqual(WADE_DEPTH);
+    expect(beachWalkable(0, z - 3)).toBe(false);
+  });
+
+  it("keeps walking inside the transform limits and off the dunes", () => {
+    expect(beachWalkable(63, -20)).toBe(false);
+    expect(beachWalkable(0, 45)).toBe(false);
   });
 });

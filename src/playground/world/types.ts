@@ -200,6 +200,14 @@ export interface WorldRuntime {
   softwareSlots?: SoftwareSlot[];
   /** Floor height at a point. Absent means flat ground at y=0. */
   groundY?: (x: number, z: number) => number;
+  /**
+   * Where people may walk, when it is more than the WORLD_RADIUS disc (a
+   * beach running down into the shallows). Local movement only: AI Actors
+   * stay inside the shared disc that the server validates for them.
+   */
+  walkable?: (x: number, z: number) => boolean;
+  /** Walking-speed multiplier at a point (wading is slower). Default 1. */
+  speedScale?: (x: number, z: number) => number;
   update?: (dt: number, now: number) => void;
   dispose(): void;
 }

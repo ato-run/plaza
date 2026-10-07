@@ -116,12 +116,21 @@ export function resolveMovement(
   colliders: readonly Collider[],
   bodyRadius = BODY_RADIUS,
   worldRadius = WORLD_RADIUS,
+  /**
+   * A World whose walkable ground is not a disc says so here; it then
+   * replaces the radius test. Colliders still apply.
+   */
+  walkable?: (x: number, z: number) => boolean,
 ): { x: number; z: number } {
   let { x, z } = from;
-  if (isPositionValid(x + velocity.vx, z, colliders, bodyRadius, worldRadius)) {
+  const valid = (px: number, pz: number) =>
+    walkable
+      ? walkable(px, pz) && isPositionValid(px, pz, colliders, bodyRadius, Infinity)
+      : isPositionValid(px, pz, colliders, bodyRadius, worldRadius);
+  if (valid(x + velocity.vx, z)) {
     x += velocity.vx;
   }
-  if (isPositionValid(x, z + velocity.vz, colliders, bodyRadius, worldRadius)) {
+  if (valid(x, z + velocity.vz)) {
     z += velocity.vz;
   }
   return { x, z };

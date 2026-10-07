@@ -25,6 +25,7 @@ import {
   CROUCH_EYE_HEIGHT,
   CROUCH_SPEED,
   EYE_HEIGHT,
+  WALK_SPEED,
   clampPitch,
   movementVector,
   stepVertical,
@@ -378,7 +379,8 @@ export function createEngine(options: EngineOptions): Engine {
     }
     const crouching =
       keys.has("KeyC") || keys.has("ControlLeft") || mobileCrouch;
-    const speed = crouching ? CROUCH_SPEED : undefined;
+    const scale = world?.speedScale?.(camera.position.x, camera.position.z) ?? 1;
+    const speed = (crouching ? CROUCH_SPEED : WALK_SPEED) * scale;
     const { vx, vz, magnitude } = movementVector(
       { right, forward: ahead },
       yaw,
@@ -393,6 +395,7 @@ export function createEngine(options: EngineOptions): Engine {
       world?.colliders ?? NO_COLLIDERS,
       undefined,
       WORLD_RADIUS,
+      world?.walkable,
     );
     camera.position.x = moved.x;
     camera.position.z = moved.z;
