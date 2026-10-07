@@ -17,7 +17,6 @@
  * collided — `centralGeometry` is shared with the AI Controller and the
  * server's adapter, and the ground under people is still exactly y=0.
  */
-import * as THREE from "three";
 
 import {
   CENTRAL_SOFTWARE_SLOTS,
@@ -43,14 +42,10 @@ import { reply } from "../../guide/nagi";
 
 /** Nagi stands just ahead of the entrance, turned toward whoever arrives. */
 const GUIDE_SPOT = { x: 2.6, z: 8.4 } as const;
-import {
-  animateMascot,
-  createMascot,
-  disposeMascot,
-  speakMascot,
-  updateMascotBubble,
-  type Mascot,
-} from "../mascot";
+import { plazaSpots, RESIDENTS } from "../residents/cast";
+import { buildGrid, createSchedule, type Spot } from "../residents/schedule";
+import { createResidents } from "../residents/villager";
+import { EXHIBIT_OBSTACLE_RADIUS } from "./centralGeometry";
 import type { Interactable, WorldDefinition, WorldRuntime, WorldSky } from "../types";
 
 /** Height of the fountain's rim and basin floor: one jump (0.85m) clears it. */
@@ -127,16 +122,16 @@ export const centralPlaza: WorldDefinition = {
     const colliders = [
       ...centralColliders().filter(
         (collider) =>
-          !(collider.shape === "circle" && collider.x === 0 && collider.z === 0),
+          !(collider.shape === "circle" && collider.x === 0 && collider.z === 0) &&
+          // The animals walk about now; their fixed spots in the shared list
+          // (kept for the AI Controller) would be invisible walls here.
+          !CENTRAL_MASCOTS.some((m) => collider.shape === "circle" && collider.x === m.x && collider.z === m.z),
       ),
       { ...fountain, top: FOUNTAIN_TOP },
       circle(0, 0, FOUNTAIN_COLUMN_RADIUS),
       ...sceneryColliders(),
-      // The guide, locally only: the AI's shared map does not know her.
-      circle(GUIDE_SPOT.x, GUIDE_SPOT.z, 0.45),
     ];
     const interactables: Interactable[] = [];
-    const mascots: Mascot[] = [];
 
     // ---- shore -----------------------------------------------------------
     // Sand and sea draw immediately from procedural placeholders; scanned
@@ -210,18 +205,50 @@ export const centralPlaza: WorldDefinition = {
       anchor: guide.anchor,
     });
 
-    // ---- mascots ---------------------------------------------------------
-    for (const spec of CENTRAL_MASCOTS) {
-      const mascot = createMascot(builder, labelHost, spec);
-      mascots.push(mascot);
-      interactables.push({
-        kind: "mascot",
-        id: mascot.id,
-        title: mascot.name,
-        anchor: mascot.anchor,
-        activate: () => speakMascot(mascot, performance.now()),
-      });
-    }
+    // ---- residents ---------------------------------------------------------
+    // Ten villagers who go about their day: walk somewhere, sit, look at the
+    // sea, chat with whoever else is there. Positions are a pure function of
+    // wall-clock time (residents/schedule.ts), so every visitor sees the
+    // same resident on the same bench without anything sent over the wire.
+    const staticForNav = [
+      ...colliders,
+      ...CENTRAL_SOFTWARE_SLOTS.map((slot) => circle(slot.x, slot.z, EXHIBIT_OBSTACLE_RADIUS)),
+      circle(GUIDE_SPOT.x, GUIDE_SPOT.z - 0.6, 1.5),
+    ];
+    const grid = buildGrid(
+      staticForNav,
+      (x, z) => beachWalkable(x, z) && waterDepth(x, z) < 0.05,
+      { minX: -34, maxX: 34, minZ: -40, maxZ: 24 },
+    );
+    const tagged = plazaSpots();
+    const spots = tagged.map((entry) => entry.spot);
+    const schedule = createSchedule(
+      grid,
+      spots,
+      RESIDENTS.length,
+      RESIDENTS.map((resident) =>
+        resident.likes
+          ? tagged.flatMap((entry, index) => (resident.likes!.includes(entry.kind) ? [index] : []))
+          : undefined,
+      ),
+    );
+    const residents = createResidents(builder, labelHost, RESIDENTS, schedule);
+    colliders.push(...residents.colliders);
+    interactables.push(...residents.interactables);
+
+    // Nagi strolls a few steps around her post and comes back.
+    const nagiSpots: Spot[] = [
+      { id: "nagi-post", x: GUIDE_SPOT.x, z: GUIDE_SPOT.z, yaw: Math.atan2(-(0 - GUIDE_SPOT.x), -(11 - GUIDE_SPOT.z)), pose: "stand" },
+      { id: "nagi-left", x: GUIDE_SPOT.x - 1.3, z: GUIDE_SPOT.z - 0.8, yaw: 0.6, pose: "stand" },
+      { id: "nagi-right", x: GUIDE_SPOT.x + 1.1, z: GUIDE_SPOT.z - 1.2, yaw: -0.3, pose: "stand" },
+    ];
+    const nagiSchedule = createSchedule(
+      buildGrid([], () => true, { minX: GUIDE_SPOT.x - 3, maxX: GUIDE_SPOT.x + 3, minZ: GUIDE_SPOT.z - 3, maxZ: GUIDE_SPOT.z + 3 }),
+      nagiSpots,
+      1,
+    );
+    const nagiCollider = circle(GUIDE_SPOT.x, GUIDE_SPOT.z, 0.4);
+    colliders.push(nagiCollider);
 
     return {
       colliders,
@@ -235,14 +262,7 @@ export const centralPlaza: WorldDefinition = {
         say: (text, durationMs) => guide.say(text, performance.now(), durationMs),
       },
 
-      labels: [{ element: guide.label, position: guide.labelPosition }, ...mascots.map((mascot) => ({
-        element: mascot.label,
-        position: new THREE.Vector3(
-          mascot.group.position.x,
-          mascot.baseY + 0.15,
-          mascot.group.position.z,
-        ),
-      }))],
+      labels: [{ element: guide.label, position: guide.labelPosition }, ...residents.labels],
 
       // The plaza is flat at 0; beyond it people may walk the beach down
       // into the shallows, slower once the water is above the ankles.
@@ -262,18 +282,20 @@ export const centralPlaza: WorldDefinition = {
         const seconds = (now / 1000) * (reducedMotion ? 0.4 : 1);
         coast.uTime.value = seconds;
         vegetation.wind.uTime.value = seconds;
+        const nagi = nagiSchedule.stateAt(0, Date.now() / 1000);
+        guide.place(nagi.x, nagi.z, nagi.yaw, nagi.moving);
+        nagiCollider.x = nagi.x;
+        nagiCollider.z = nagi.z;
+        nagiCollider.r = eye && Math.hypot(eye.x - nagi.x, eye.z - nagi.z) < 0.7 ? 0 : 0.4;
         guide.update(now, eye, reducedMotion);
-        for (const mascot of mascots) {
-          animateMascot(mascot, now, reducedMotion);
-          updateMascotBubble(mascot, now);
-        }
+        residents.update(eye, reducedMotion, [{ x: nagi.x, z: nagi.z }]);
         props.update(seconds);
       },
 
       dispose() {
         // Only what the builder does not know about: the DOM labels. Meshes,
         // materials and textures are the engine's builder to release.
-        for (const mascot of mascots) disposeMascot(mascot);
+        residents.dispose();
         guide.dispose();
       },
     };

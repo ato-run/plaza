@@ -413,7 +413,7 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
       if (currentTarget?.kind === "mascot" || currentTarget?.kind === "guide") {
         // A mascot is scenery. Letting a wave "succeed" at one would tell the
         // sender somebody received it when nobody did.
-        hooks.onError("That's a guide. Try reacting to someone nearby.");
+        hooks.onError("Neighbors don't take reactions. Try someone else nearby.");
         return;
       }
       if (currentTarget?.kind !== "person") {

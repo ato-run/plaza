@@ -23,6 +23,8 @@ export interface GuideNpc {
   anchor: THREE.Vector3;
   labelPosition: THREE.Vector3;
   update(now: number, eye: THREE.Vector3 | undefined, reducedMotion: boolean): void;
+  /** Move her (she strolls near her post); `walking` adds a gait. */
+  place(x: number, z: number, yaw: number, walking: boolean): void;
   say(text: string, now: number, durationMs?: number): void;
   dispose(): void;
 }
@@ -100,6 +102,9 @@ export function createGuideNpc(
   labelHost.append(label);
 
   let spokenUntil = 0;
+  let walking = false;
+  let yaw = spec.yaw;
+  const base = { x: spec.x, z: spec.z };
   let greeted = false;
   const restYaw = 0;
   const toEye = new THREE.Vector3();
@@ -110,6 +115,17 @@ export function createGuideNpc(
     anchor: new THREE.Vector3(spec.x, 1.45, spec.z),
     labelPosition: new THREE.Vector3(spec.x, 2.15, spec.z),
 
+    place(x, z, nextYaw, isWalking) {
+      base.x = x;
+      base.z = z;
+      walking = isWalking;
+      const delta = Math.atan2(Math.sin(nextYaw - yaw), Math.cos(nextYaw - yaw));
+      yaw += delta * 0.12;
+      group.rotation.y = yaw;
+      npc.anchor.set(x, 1.45, z);
+      npc.labelPosition.set(x, 2.15, z);
+    },
+
     say(text, now, durationMs = 6500) {
       bubble.textContent = text;
       spokenUntil = now + durationMs;
@@ -119,12 +135,12 @@ export function createGuideNpc(
       bubble.style.display = now < spokenUntil ? "block" : "none";
       let target = restYaw;
       if (eye) {
-        toEye.set(eye.x - spec.x, 0, eye.z - spec.z);
+        toEye.set(eye.x - base.x, 0, eye.z - base.z);
         const distance = toEye.length();
         if (distance < LOOK_DISTANCE) {
           // Head turns toward you, within what a neck can do.
           const world = Math.atan2(toEye.x, toEye.z);
-          let relative = world - spec.yaw;
+          let relative = world - yaw;
           relative = Math.atan2(Math.sin(relative), Math.cos(relative));
           target = Math.max(-1.1, Math.min(1.1, relative));
         }
@@ -134,9 +150,16 @@ export function createGuideNpc(
         }
       }
       head.rotation.y += (target - head.rotation.y) * (reducedMotion ? 1 : 0.08);
-      if (reducedMotion) return;
+      if (reducedMotion) {
+        group.position.set(base.x, 0, base.z);
+        return;
+      }
       const t = now * 0.001;
-      group.position.y = Math.sin(t * 1.4) * 0.008;
+      group.position.set(
+        base.x,
+        walking ? Math.abs(Math.sin(t * 7)) * 0.035 : Math.sin(t * 1.4) * 0.008,
+        base.z,
+      );
       arms[0].rotation.x = -0.08 + Math.sin(t * 1.4) * 0.03;
       arms[1].rotation.x = -0.08 - Math.sin(t * 1.4) * 0.03;
     },
