@@ -136,6 +136,9 @@ export function createEngine(options: EngineOptions): Engine {
   let jumpRequested = false;
   let mobileCrouch = false;
 
+  /** Dev harness only: a pinned World clock for same-frame comparisons. */
+  let devClock: number | null = null;
+
   let world: WorldRuntime | null = null;
   let worldRoot: THREE.Group | null = null;
   let worldBuilder: WorldBuilder | null = null;
@@ -319,7 +322,7 @@ export function createEngine(options: EngineOptions): Engine {
     camera.rotation.set(pitch, yaw, 0, "YXZ");
     camera.getWorldDirection(forward);
 
-    world?.update?.(dt, now);
+    world?.update?.(dt, devClock ?? now);
 
     const pose: Pose = crouching ? "crouch" : "stand";
     frameHandler?.({
@@ -483,6 +486,30 @@ export function createEngine(options: EngineOptions): Engine {
       host.replaceChildren();
     },
   };
+
+  // Verification harness, compiled out of production builds: fixed camera,
+  // fixed World clock, renderer stats. Image comparisons need the same view
+  // at the same instant, which pointer-lock input cannot reproduce.
+  if (import.meta.env.DEV) {
+    const harness = {
+      renderer,
+      scene,
+      camera,
+      setView(x: number, z: number, nextYaw: number, nextPitch: number) {
+        camera.position.x = x;
+        camera.position.z = z;
+        yaw = nextYaw;
+        pitch = clampPitch(nextPitch);
+      },
+      setClock(ms: number | null) {
+        devClock = ms;
+      },
+    };
+    (window as unknown as { __plaza?: typeof harness }).__plaza = harness;
+    teardown.push(() => {
+      delete (window as unknown as { __plaza?: typeof harness }).__plaza;
+    });
+  }
 
   raf = requestAnimationFrame(frame);
   return engine;
