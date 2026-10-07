@@ -23,6 +23,8 @@ export interface CircleCollider {
   x: number;
   z: number;
   r: number;
+  /** See `climbable`. Absent: a wall of unlimited height. */
+  top?: number;
 }
 
 export interface BoxCollider {
@@ -34,12 +36,35 @@ export interface BoxCollider {
   depth: number;
   /** Radians about +Y. Optional because most walls are axis-aligned. */
   rotation?: number;
+  /** See `climbable`. Absent: a wall of unlimited height. */
+  top?: number;
 }
 
 export type Collider = CircleCollider | BoxCollider;
 
 export function circle(x: number, z: number, r: number): CircleCollider {
   return { shape: "circle", x, z, r };
+}
+
+/** Feet within this of an obstacle's top count as on it, not against it. */
+const STAND_TOLERANCE = 0.05;
+
+/**
+ * The colliders that still block a body whose feet are at `feetY`.
+ *
+ * An obstacle with a `top` is something you can jump onto: once your feet are
+ * level with its top it stops being a wall. The World must raise the ground
+ * (`groundY`) over the same footprint grown by BODY_RADIUS, so a body that is
+ * allowed to overlap the obstacle always stands on it — never inside it.
+ */
+export function blockingColliders(
+  colliders: readonly Collider[],
+  feetY: number,
+): readonly Collider[] {
+  if (!colliders.some((collider) => collider.top !== undefined)) return colliders;
+  return colliders.filter(
+    (collider) => collider.top === undefined || feetY < collider.top - STAND_TOLERANCE,
+  );
 }
 
 export function box(
