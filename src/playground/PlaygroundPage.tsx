@@ -132,7 +132,7 @@ function targetKindLabel(target: WorldTarget): string {
     case "person":
       return "NEAR YOU";
     case "mascot":
-      return "GUIDE";
+      return "NEIGHBOR";
     case "guide":
       return "PLAZA GUIDE";
     case "seat":
@@ -153,7 +153,7 @@ function targetActionLabel(target: WorldTarget): string {
     case "person":
       return "Talk";
     case "mascot":
-      return "Pet";
+      return "Talk";
     case "guide":
       return "Talk";
     case "seat":
