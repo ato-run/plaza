@@ -14,10 +14,18 @@ import * as THREE from "three";
 
 import { resolveMovement, type Collider } from "./collision";
 import { createWorldBuilder, type WorldBuilder } from "./primitives";
+import { createEnvironment } from "./rendering/environment";
+import {
+  detectQuality,
+  PixelRatioController,
+  QUALITY_PROFILES,
+  type QualityProfile,
+} from "./rendering/quality";
 import {
   CROUCH_EYE_HEIGHT,
   CROUCH_SPEED,
   EYE_HEIGHT,
+  WALK_SPEED,
   clampPitch,
   movementVector,
   stepVertical,
@@ -26,6 +34,8 @@ import {
   type MovementState,
 } from "./worldMath";
 import type { Pose, WorldDefinition, WorldRuntime } from "./types";
+
+export type LookMode = "lock" | "drag";
 
 export interface EngineFrame {
   now: number;
@@ -38,7 +48,12 @@ export interface EngineFrame {
 
 export interface EngineOptions {
   host: HTMLDivElement;
-  onPointerLockChange(locked: boolean): void;
+  /**
+   * The view was engaged or released. `mode` says how the view is steered:
+   * a locked pointer, or — where the embedding frame forbids pointer lock
+   * (a sandboxed iframe without `allow-pointer-lock`) — dragging.
+   */
+  onPointerLockChange(engaged: boolean, mode: LookMode): void;
   onRequestChat(): void;
   onInteract(): void;
   onReaction(index: number): void;
@@ -49,6 +64,7 @@ export interface Engine {
   readonly scene: THREE.Scene;
   readonly camera: THREE.PerspectiveCamera;
   readonly reducedMotion: boolean;
+  readonly quality: QualityProfile;
   readonly labelHost: HTMLElement;
   /** Null between `dispose()` of one World and `mount()` of the next. */
   readonly world: WorldRuntime | null;
@@ -59,6 +75,11 @@ export interface Engine {
   setJoystick(x: number, y: number): void;
   /** Touch jump button (keyboard uses Space). Ignored while paused. */
   jump(): void;
+  /**
+   * Light the place as this time of day (an id from the World's
+   * `timesOfDay`); kept across World switches, ignored by Worlds without it.
+   */
+  setTimeOfDay(id: string | null): void;
   /** Touch crouch toggle. ORed with the held C / Control keys. */
   setCrouching(crouching: boolean): void;
   /** Screen position for a world point, or null when off-screen/behind. */
@@ -68,6 +89,7 @@ export interface Engine {
 }
 
 const REACTION_KEYS = ["Digit1", "Digit2", "Digit3", "Digit4"];
+const NO_COLLIDERS: readonly Collider[] = [];
 
 export function createEngine(options: EngineOptions): Engine {
   const { host } = options;
@@ -83,7 +105,23 @@ export function createEngine(options: EngineOptions): Engine {
   } catch (cause) {
     throw new Error("webgl_unavailable", { cause });
   }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
+  // `?quality=low|high` pins the tier in dev builds, for side-by-side checks.
+  const forcedQuality = import.meta.env.DEV
+    ? new URLSearchParams(window.location.search).get("quality")
+    : null;
+  const quality =
+    QUALITY_PROFILES[
+      forcedQuality === "low" || forcedQuality === "high"
+        ? forcedQuality
+        : detectQuality({
+            coarsePointer: window.matchMedia?.("(pointer: coarse)").matches ?? false,
+            shortSide: Math.min(window.screen?.width ?? width, window.screen?.height ?? height),
+            cores: navigator.hardwareConcurrency || undefined,
+            memoryGb: (navigator as Navigator & { deviceMemory?: number }).deviceMemory,
+          })
+    ];
+  const pixelRatio = new PixelRatioController(quality, window.devicePixelRatio || 1);
+  renderer.setPixelRatio(pixelRatio.current);
   renderer.setSize(width, height);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -108,15 +146,25 @@ export function createEngine(options: EngineOptions): Engine {
   const sun = new THREE.DirectionalLight("#fff4da", 3);
   sun.position.set(-12, 22, 9);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  // Shadow texels go to the place people stand and talk; scenery beyond the
+  // walk limit is lit but casts nothing worth a bigger map.
+  sun.shadow.mapSize.set(quality.shadowMapSize, quality.shadowMapSize);
   sun.shadow.camera.left = -30;
   sun.shadow.camera.right = 30;
   sun.shadow.camera.top = 30;
   sun.shadow.camera.bottom = -30;
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 140;
   sun.shadow.bias = -0.0003;
+  sun.shadow.normalBias = 0.02;
   scene.add(sun);
+  scene.add(sun.target);
+  const environment = createEnvironment(renderer, scene, camera, sun, hemisphere);
 
   const keys = new Set<string>();
+  let dragPointer = -1;
+  let dragX = 0;
+  let dragY = 0;
   const joystick = { x: 0, y: 0 };
   const cadence = new SendCadence();
   const teardown: (() => void)[] = [];
@@ -125,6 +173,27 @@ export function createEngine(options: EngineOptions): Engine {
   let pitch = -0.03;
   let paused = false;
   let locked = false;
+  // Engaged without a pointer lock: keys move, dragging looks. Entered when
+  // the lock is refused, and from then on used directly for this page.
+  let dragLook = false;
+  let lockUnavailable = false;
+  const engaged = () => locked || dragLook;
+  const enterDragLook = () => {
+    lockUnavailable = true;
+    if (dragLook || locked) return;
+    dragLook = true;
+    keys.clear();
+    jumpRequested = false;
+    options.onPointerLockChange(true, "drag");
+  };
+  const leaveDragLook = () => {
+    if (!dragLook) return;
+    dragLook = false;
+    dragPointer = -1;
+    keys.clear();
+    jumpRequested = false;
+    options.onPointerLockChange(false, "drag");
+  };
   let raf = 0;
   let lastFrame = performance.now();
   let contextLost = false;
@@ -136,10 +205,16 @@ export function createEngine(options: EngineOptions): Engine {
   let jumpRequested = false;
   let mobileCrouch = false;
 
+  /** Dev harness only: a pinned World clock for same-frame comparisons. */
+  let devClock: number | null = null;
+  let mountedDefinition: WorldDefinition | null = null;
+  let timeOfDay: string | null = null;
+
   let world: WorldRuntime | null = null;
+  /** Fires when the current World is unmounted; its late loads must stop. */
+  let worldAbort: AbortController | null = null;
   let worldRoot: THREE.Group | null = null;
   let worldBuilder: WorldBuilder | null = null;
-  let colliders: readonly Collider[] = [];
   let groundY: ((x: number, z: number) => number) | null = null;
 
   const on = (
@@ -161,8 +236,9 @@ export function createEngine(options: EngineOptions): Engine {
     // Keys held when the lock breaks would otherwise stick down forever.
     keys.clear();
     jumpRequested = false;
-    options.onPointerLockChange(locked);
+    options.onPointerLockChange(locked, "lock");
   });
+  on(document, "pointerlockerror", enterDragLook);
 
   on(document, "mousemove", (event) => {
     if (!locked || paused) return;
@@ -175,6 +251,10 @@ export function createEngine(options: EngineOptions): Engine {
     const keyboard = event as KeyboardEvent;
     const tag = (keyboard.target as HTMLElement | null)?.tagName;
     if (paused || tag === "INPUT" || tag === "TEXTAREA") return;
+    if (keyboard.key === "Escape" && dragLook) {
+      leaveDragLook();
+      return;
+    }
     if (keyboard.key === "Enter") {
       keyboard.preventDefault();
       keys.clear();
@@ -187,7 +267,7 @@ export function createEngine(options: EngineOptions): Engine {
     }
     if (keyboard.code === "Space") {
       // Jump is edge-triggered; holding Space must not bunny-hop from repeat.
-      if (locked && !keyboard.repeat) {
+      if (engaged() && !keyboard.repeat) {
         keyboard.preventDefault();
         jumpRequested = true;
       }
@@ -199,7 +279,7 @@ export function createEngine(options: EngineOptions): Engine {
       return;
     }
     if (
-      locked &&
+      engaged() &&
       ["KeyW", "KeyA", "KeyS", "KeyD", "KeyC", "ControlLeft"].includes(
         keyboard.code,
       )
@@ -218,18 +298,19 @@ export function createEngine(options: EngineOptions): Engine {
   });
 
   on(renderer.domElement, "click", () => {
-    if (!paused && !locked) engine.requestPointerLock();
+    if (!paused && !engaged()) engine.requestPointerLock();
   });
 
-  // Touch look. Only the right side drags the view, so it cannot fight the
-  // joystick living on the left.
-  let dragPointer = -1;
-  let dragX = 0;
-  let dragY = 0;
+  // Touch look, and mouse look when the pointer cannot be locked. Touch drags
+  // only on the right side, so it cannot fight the joystick on the left.
   on(renderer.domElement, "pointerdown", (event) => {
     const pointer = event as PointerEvent;
-    if (pointer.pointerType === "mouse" || paused) return;
-    if (pointer.clientX < window.innerWidth * 0.4) return;
+    if (paused) return;
+    if (pointer.pointerType === "mouse") {
+      if (!dragLook || pointer.button !== 0) return;
+    } else if (pointer.clientX < window.innerWidth * 0.4) {
+      return;
+    }
     dragPointer = pointer.pointerId;
     dragX = pointer.clientX;
     dragY = pointer.clientY;
@@ -249,13 +330,27 @@ export function createEngine(options: EngineOptions): Engine {
   on(renderer.domElement, "pointerup", endDrag);
   on(renderer.domElement, "pointercancel", endDrag);
 
-  on(window, "resize", () => {
-    const w = host.clientWidth || 1;
-    const h = host.clientHeight || 1;
+  // The host, not the window: Plaza is embedded in an Activity frame whose
+  // size changes without any window resize.
+  let hostWidth = width;
+  let hostHeight = height;
+  const resize = () => {
+    const w = host.clientWidth;
+    const h = host.clientHeight;
+    if (w === 0 || h === 0 || (w === hostWidth && h === hostHeight)) return;
+    hostWidth = w;
+    hostHeight = h;
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
-  });
+  };
+  if (typeof ResizeObserver === "function") {
+    const observer = new ResizeObserver(resize);
+    observer.observe(host);
+    teardown.push(() => observer.disconnect());
+  } else {
+    on(window, "resize", resize);
+  }
 
   // A lost context otherwise leaves a frozen canvas with no explanation.
   on(renderer.domElement, "webglcontextlost", (event) => {
@@ -265,6 +360,7 @@ export function createEngine(options: EngineOptions): Engine {
   });
   on(renderer.domElement, "webglcontextrestored", () => {
     contextLost = false;
+    environment.restore();
   });
 
   // ---- frame ---------------------------------------------------------------
@@ -275,8 +371,11 @@ export function createEngine(options: EngineOptions): Engine {
   function frame(now: number): void {
     raf = requestAnimationFrame(frame);
     if (contextLost) return;
-    const dt = Math.min((now - lastFrame) / 1000, 0.05);
+    const frameMs = now - lastFrame;
+    const dt = Math.min(frameMs / 1000, 0.05);
     lastFrame = now;
+    const ratio = paused ? null : pixelRatio.sample(frameMs);
+    if (ratio !== null) renderer.setPixelRatio(ratio);
 
     let right = 0;
     let ahead = 0;
@@ -286,7 +385,8 @@ export function createEngine(options: EngineOptions): Engine {
     }
     const crouching =
       keys.has("KeyC") || keys.has("ControlLeft") || mobileCrouch;
-    const speed = crouching ? CROUCH_SPEED : undefined;
+    const scale = world?.speedScale?.(camera.position.x, camera.position.z) ?? 1;
+    const speed = (crouching ? CROUCH_SPEED : WALK_SPEED) * scale;
     const { vx, vz, magnitude } = movementVector(
       { right, forward: ahead },
       yaw,
@@ -296,9 +396,12 @@ export function createEngine(options: EngineOptions): Engine {
     const moved = resolveMovement(
       { x: camera.position.x, z: camera.position.z },
       { vx, vz },
-      colliders,
+      // Read live: `world.ts` replaces the array when exhibits arrive, so a
+      // copy taken at mount would never see a plinth.
+      world?.colliders ?? NO_COLLIDERS,
       undefined,
       WORLD_RADIUS,
+      world?.walkable,
     );
     camera.position.x = moved.x;
     camera.position.z = moved.z;
@@ -319,7 +422,7 @@ export function createEngine(options: EngineOptions): Engine {
     camera.rotation.set(pitch, yaw, 0, "YXZ");
     camera.getWorldDirection(forward);
 
-    world?.update?.(dt, now);
+    world?.update?.(dt, devClock ?? now);
 
     const pose: Pose = crouching ? "crouch" : "stand";
     frameHandler?.({
@@ -334,20 +437,23 @@ export function createEngine(options: EngineOptions): Engine {
   }
 
   function unmountWorld(): void {
+    worldAbort?.abort();
+    worldAbort = null;
     world?.dispose();
     worldBuilder?.dispose();
     if (worldRoot) scene.remove(worldRoot);
     world = null;
     worldRoot = null;
     worldBuilder = null;
-    colliders = [];
     groundY = null;
+    environment.clear();
   }
 
   const engine: Engine = {
     scene,
     camera,
     reducedMotion,
+    quality,
     labelHost: host,
 
     get world() {
@@ -360,12 +466,10 @@ export function createEngine(options: EngineOptions): Engine {
       // phone cannot absorb.
       unmountWorld();
 
-      scene.background = new THREE.Color(definition.environment.background);
-      scene.fog = new THREE.Fog(
-        definition.environment.fog,
-        definition.environment.fogNear,
-        definition.environment.fogFar,
-      );
+      mountedDefinition = definition;
+      const lighting = environment.apply(definition.environment, timeOfDay);
+      const abort = new AbortController();
+      worldAbort = abort;
 
       const root = new THREE.Group();
       root.name = `world:${definition.id}`;
@@ -379,9 +483,11 @@ export function createEngine(options: EngineOptions): Engine {
         builder,
         labelHost: host,
         reducedMotion,
+        quality,
+        lighting,
+        signal: abort.signal,
       });
       world = runtime;
-      colliders = runtime.colliders;
       groundY = runtime.groundY ?? null;
 
       camera.position.set(
@@ -412,22 +518,26 @@ export function createEngine(options: EngineOptions): Engine {
     requestPointerLock() {
       // Touch devices have no pointer to lock; drag-look is the equivalent.
       if (window.matchMedia?.("(pointer: coarse)").matches) return;
+      // A frame that forbids the lock (sandbox without allow-pointer-lock)
+      // refuses every request; steer by dragging instead of failing again.
+      if (lockUnavailable || typeof renderer.domElement.requestPointerLock !== "function") {
+        enterDragLook();
+        return;
+      }
       try {
         const result = renderer.domElement.requestPointerLock() as
           | Promise<void>
           | undefined;
-        result?.catch?.(() =>
-          options.onError(
-            "視点操作を開始するには、画面をもう一度クリックしてください。",
-          ),
-        );
+        result?.catch?.(enterDragLook);
       } catch {
-        options.onError("このブラウザではマウス固定を利用できません。");
+        enterDragLook();
       }
     },
 
     setPaused(next) {
       paused = next;
+      // Chat takes the keyboard; the drag view resumes with the next request.
+      if (next) leaveDragLook();
       keys.clear();
       jumpRequested = false;
       joystick.x = 0;
@@ -441,6 +551,14 @@ export function createEngine(options: EngineOptions): Engine {
 
     jump() {
       if (!paused) jumpRequested = true;
+    },
+
+    setTimeOfDay(id) {
+      timeOfDay = id;
+      const entry = mountedDefinition?.environment.timesOfDay?.find(
+        (candidate) => candidate.id === id,
+      );
+      if (entry) environment.retune(entry.sky);
     },
 
     setCrouching(crouching) {
@@ -476,6 +594,7 @@ export function createEngine(options: EngineOptions): Engine {
       cancelAnimationFrame(raf);
       teardown.forEach((off) => off());
       unmountWorld();
+      environment.dispose();
       hemisphere.dispose();
       sun.dispose();
       sun.shadow.map?.dispose();
@@ -483,6 +602,35 @@ export function createEngine(options: EngineOptions): Engine {
       host.replaceChildren();
     },
   };
+
+  // Verification harness, compiled out of production builds: fixed camera,
+  // fixed World clock, renderer stats. Image comparisons need the same view
+  // at the same instant, which pointer-lock input cannot reproduce.
+  if (import.meta.env.DEV) {
+    const harness = {
+      renderer,
+      scene,
+      camera,
+      quality,
+      setView(x: number, z: number, nextYaw: number, nextPitch: number) {
+        camera.position.x = x;
+        camera.position.z = z;
+        yaw = nextYaw;
+        pitch = clampPitch(nextPitch);
+      },
+      setClock(ms: number | null) {
+        devClock = ms;
+      },
+      /** Unmount and rebuild the current World in place (leak checks). */
+      remount() {
+        if (mountedDefinition) engine.mount(mountedDefinition);
+      },
+    };
+    (window as unknown as { __plaza?: typeof harness }).__plaza = harness;
+    teardown.push(() => {
+      delete (window as unknown as { __plaza?: typeof harness }).__plaza;
+    });
+  }
 
   raf = requestAnimationFrame(frame);
   return engine;

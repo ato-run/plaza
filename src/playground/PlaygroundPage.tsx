@@ -148,11 +148,23 @@ function targetActionLabel(target: WorldTarget): string {
   }
 }
 
+/** localStorage key for the viewer's chosen time of day. */
+const TIME_OF_DAY_KEY = "plaza.timeOfDay";
+
 export default function PlaygroundPage() {
   const [state, setState] = useState<PlaygroundState>(createPlaygroundState);
   const [presence, setPresence] = useState<PresenceState>(createPresenceState);
   const [target, setTarget] = useState<WorldTarget | null>(null);
   const [locked, setLocked] = useState(false);
+  const [lookMode, setLookMode] = useState<"lock" | "drag">("lock");
+  // How the place is lit for THIS viewer; remembered locally, never sent.
+  const [timeOfDay, setTimeOfDay] = useState<string | null>(() => {
+    try {
+      return window.localStorage.getItem(TIME_OF_DAY_KEY);
+    } catch {
+      return null;
+    }
+  });
   const [chatting, setChatting] = useState(false);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -768,7 +780,10 @@ export default function PlaygroundPage() {
     let world: WorldHandle;
     try {
       world = startWorld(host, {
-        onPointerLockChange: setLocked,
+        onPointerLockChange: (engaged, mode) => {
+          setLocked(engaged);
+          setLookMode(mode);
+        },
         onTargetChange: setTarget,
         onTransform: (transform) => {
           if (runnerAvailableRef.current) {
@@ -963,6 +978,16 @@ export default function PlaygroundPage() {
     }
   }, [chatting]);
 
+  useEffect(() => {
+    worldRef.current?.setTimeOfDay(timeOfDay);
+    try {
+      if (timeOfDay) window.localStorage.setItem(TIME_OF_DAY_KEY, timeOfDay);
+      else window.localStorage.removeItem(TIME_OF_DAY_KEY);
+    } catch {
+      // Remembering the choice is a convenience; the switch still works.
+    }
+  }, [timeOfDay, worldReady]);
+
   const viewer = state.viewer;
   const canPost = viewer?.can_post === true;
   const remaining = TEXT_LIMIT - [...draft].length;
@@ -1032,6 +1057,28 @@ export default function PlaygroundPage() {
           ato<span className="pg-brand-dot">.</span>
           <span className="pg-brand-sub">plaza</span>
         </span>
+        {world.environment.timesOfDay ? (
+          <div className="pg-time" role="group" aria-label="時間帯">
+            {world.environment.timesOfDay.map((entry, index) => {
+              const active = (timeOfDay ?? world.environment.timesOfDay?.[0]?.id) === entry.id;
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  aria-pressed={active}
+                  className={active ? "pg-time-on" : undefined}
+                  onClick={(event) => {
+                    // Drop focus so Space keeps meaning "jump", not "toggle".
+                    event.currentTarget.blur();
+                    setTimeOfDay(index === 0 ? null : entry.id);
+                  }}
+                >
+                  {entry.label}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
         <button
           type="button"
           className="pg-room"
@@ -1203,7 +1250,7 @@ export default function PlaygroundPage() {
           <span>
             <kbd>C</kbd> しゃがむ
           </span>
-          <span>マウス 視点</span>
+          <span>{lookMode === "drag" ? "ドラッグ 視点" : "マウス 視点"}</span>
           <span>
             <kbd>esc</kbd> 解除
           </span>

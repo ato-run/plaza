@@ -4,3 +4,6 @@ dist-types/
 .wrangler/
 
 .tmp/
+
+# Raw asset downloads (scripts/build-beach-assets.mjs); never shipped.
+assets/source/cache/

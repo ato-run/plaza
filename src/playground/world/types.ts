@@ -17,6 +17,8 @@ import type * as THREE from "three";
 import type { Collider } from "./collision";
 import type { SoftwareSlot } from "./exhibit";
 import type { WorldBuilder } from "./primitives";
+import type { QualityProfile } from "./rendering/quality";
+import type { SkyUniforms } from "./rendering/skyShader";
 
 /**
  * The Worlds this Playground hosts.
@@ -75,6 +77,69 @@ export interface WorldEnvironment {
   fog: string;
   fogNear: number;
   fogFar: number;
+  /**
+   * An outdoor sky that lights the World. Absent: the flat background, linear
+   * fog and fixed lights above, which is what an unbuilt World still uses.
+   */
+  sky?: WorldSky;
+  /**
+   * Other lighting moods for the same place, chosen per viewer (never
+   * synchronised: the light is how you see the room, not part of it). The
+   * first entry should be `sky` itself.
+   */
+  timesOfDay?: readonly TimeOfDay[];
+}
+
+export interface TimeOfDay {
+  id: string;
+  /** Shown on the switch, short: "昼", "夕焼け". */
+  label: string;
+  sky: WorldSky;
+}
+
+/**
+ * One sun, one sky, one haze. The engine derives the visible dome, the
+ * directional light, the image-based lighting and the fog from these, so they
+ * cannot disagree about where the light comes from.
+ */
+export interface WorldSky {
+  /** Toward the sun; normalised by the engine. */
+  sunDirection: readonly [number, number, number];
+  sunColor: string;
+  sunIntensity: number;
+  zenith: string;
+  horizon: string;
+  /** What the lower half of the lighting sees: sunlit ground. */
+  ground: string;
+  /** Exponential haze density over land, per metre. */
+  hazeDensity: number;
+  /** Camera far plane, metres: far enough for a horizon. */
+  far: number;
+  exposure: number;
+  environmentIntensity: number;
+  /** Cloud cover in the visible dome, 0–1. */
+  clouds: number;
+  /**
+   * Brightness of the visible disc, relative to the light. Low suns read as
+   * a coloured disc only when this is small enough not to clip to white.
+   */
+  sunDisc?: number;
+}
+
+/**
+ * The engine's lighting, handed to a World that shades its own surfaces
+ * (water) so they use the same sky as everything else. Read-only.
+ */
+export interface WorldLighting {
+  sky: SkyUniforms;
+  /**
+   * The prefiltered sky (PMREM) as a shader uniform, null for a World without
+   * one. A uniform rather than a texture so a re-bake after context loss
+   * reaches materials that captured it.
+   */
+  environment: { value: THREE.Texture | null };
+  /** Full-resolution height of `environment`, for its sampling defines. */
+  environmentHeight: number;
 }
 
 /**
@@ -124,6 +189,15 @@ export interface WorldBuildContext {
   labelHost: HTMLElement;
   /** Honour it: an idle animation that ignores this is an accessibility bug. */
   reducedMotion: boolean;
+  /** The device tier chosen at start. Read-only. */
+  quality: QualityProfile;
+  lighting: WorldLighting;
+  /**
+   * Aborted when this World is unmounted. Anything loaded asynchronously must
+   * check it before touching `root`, and dispose what it loaded if it fired:
+   * a decode that finishes after the switch must not land in the next World.
+   */
+  signal: AbortSignal;
 }
 
 export interface WorldRuntime {
@@ -144,6 +218,14 @@ export interface WorldRuntime {
   softwareSlots?: SoftwareSlot[];
   /** Floor height at a point. Absent means flat ground at y=0. */
   groundY?: (x: number, z: number) => number;
+  /**
+   * Where people may walk, when it is more than the WORLD_RADIUS disc (a
+   * beach running down into the shallows). Local movement only: AI Actors
+   * stay inside the shared disc that the server validates for them.
+   */
+  walkable?: (x: number, z: number) => boolean;
+  /** Walking-speed multiplier at a point (wading is slower). Default 1. */
+  speedScale?: (x: number, z: number) => number;
   update?: (dt: number, now: number) => void;
   dispose(): void;
 }

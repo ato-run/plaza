@@ -12,6 +12,13 @@
  * identity (shared materials exist, and disposing one twice is a silent
  * corruption).
  *
+ * Ownership is by identity, exactly once. The value caches below are lookups
+ * only; what gets disposed is the set of distinct objects, so a material that
+ * is both cached and found again on a mesh is released once. Textures inside
+ * shader uniforms and render targets are invisible to a scene walk — Worlds
+ * register those with `trackResource`, explicitly, because a uniform may just
+ * as well hold a texture the engine owns (the sky's environment map).
+ *
  * Geometry and material caching is by value: a plaza has ~150 boxes across a
  * handful of sizes and colours, and building 150 separate `MeshStandardMaterial`
  * instances for eight distinct colours costs eight times the shader compiles
@@ -54,7 +61,10 @@ export interface WorldBuilder {
   ): THREE.Mesh;
   /** Register something built by hand so it is still disposed. */
   track<T extends THREE.Object3D>(object: T, parent?: THREE.Object3D): T;
-  /** Register a resource the builder did not create (canvas textures). */
+  /**
+   * Register a resource the scene walk cannot find: canvas or data textures
+   * held in shader uniforms, render targets, loaded geometry kept off-scene.
+   */
   trackResource(resource: { dispose(): void }): void;
   group(parent?: THREE.Object3D): THREE.Group;
   /** A material from the shared cache — for hand-built meshes. */
@@ -84,9 +94,10 @@ function materialKey(color: string, options: MaterialOptions): string {
 
 export function createWorldBuilder(root: THREE.Group): WorldBuilder {
   const geometries = new Set<THREE.BufferGeometry>();
-  const materials = new Map<string, THREE.Material>();
+  const materials = new Set<THREE.Material>();
   const resources = new Set<{ dispose(): void }>();
   const geometryCache = new Map<string, THREE.BufferGeometry>();
+  const materialCache = new Map<string, THREE.Material>();
 
   const geometry = <T extends THREE.BufferGeometry>(key: string, make: () => T): T => {
     const cached = geometryCache.get(key);
@@ -99,7 +110,7 @@ export function createWorldBuilder(root: THREE.Group): WorldBuilder {
 
   const material = (color: string, options: MaterialOptions = {}): THREE.Material => {
     const key = materialKey(color, options);
-    const cached = materials.get(key);
+    const cached = materialCache.get(key);
     if (cached) return cached;
     const created = options.basic
       ? new THREE.MeshBasicMaterial({
@@ -114,7 +125,8 @@ export function createWorldBuilder(root: THREE.Group): WorldBuilder {
           opacity: options.opacity ?? 1,
           ...(options.emissive ? { emissive: new THREE.Color(options.emissive) } : {}),
         });
-    materials.set(key, created);
+    materialCache.set(key, created);
+    materials.add(created);
     return created;
   };
 
@@ -199,27 +211,40 @@ export function createWorldBuilder(root: THREE.Group): WorldBuilder {
       root.traverse((object) => {
         const withGeometry = object as Partial<THREE.Mesh>;
         if (withGeometry.geometry) geometries.add(withGeometry.geometry);
-        const withMaterial = (object as Partial<THREE.Mesh>).material;
-        if (withMaterial) {
+        // Instance matrices are GPU buffers of their own.
+        if ((object as THREE.InstancedMesh).isInstancedMesh) {
+          resources.add(object as THREE.InstancedMesh);
+        }
+        const owned = [
+          (object as Partial<THREE.Mesh>).material,
+          (object as Partial<THREE.Mesh>).customDepthMaterial,
+          (object as Partial<THREE.Mesh>).customDistanceMaterial,
+        ];
+        for (const withMaterial of owned) {
+          if (!withMaterial) continue;
           const list = Array.isArray(withMaterial) ? withMaterial : [withMaterial];
           for (const entry of list) {
             // Textures a material owns are not freed by the material itself.
+            // A render target's texture belongs to its target, not to here.
             for (const value of Object.values(entry as unknown as Record<string, unknown>)) {
-              if (value instanceof THREE.Texture) resources.add(value);
+              if (value instanceof THREE.Texture && !value.isRenderTargetTexture) {
+                resources.add(value);
+              }
             }
-            materials.set(`sweep:${entry.uuid}`, entry);
+            materials.add(entry);
           }
         }
       });
       root.removeFromParent();
       root.clear();
       for (const entry of geometries) entry.dispose();
-      for (const entry of materials.values()) entry.dispose();
+      for (const entry of materials) entry.dispose();
       for (const entry of resources) entry.dispose();
       geometries.clear();
       materials.clear();
       resources.clear();
       geometryCache.clear();
+      materialCache.clear();
     },
   };
 }
@@ -250,14 +275,15 @@ export function bench(
   x: number,
   z: number,
   rotation = 0,
+  palette: { seat?: string; back?: string; legs?: string } = {},
 ): void {
   const group = builder.group();
   group.position.set(x, 0, z);
   group.rotation.y = rotation;
-  builder.box(2.9, 0.16, 0.7, "#ae8863", 0, 0.58, 0, group);
-  builder.box(2.9, 0.45, 0.12, "#bb9975", 0, 0.94, -0.32, group);
-  builder.box(0.14, 0.5, 0.55, "#4d6458", -1, 0.27, 0, group);
-  builder.box(0.14, 0.5, 0.55, "#4d6458", 1, 0.27, 0, group);
+  builder.box(2.9, 0.16, 0.7, palette.seat ?? "#ae8863", 0, 0.58, 0, group);
+  builder.box(2.9, 0.45, 0.12, palette.back ?? "#bb9975", 0, 0.94, -0.32, group);
+  builder.box(0.14, 0.5, 0.55, palette.legs ?? "#4d6458", -1, 0.27, 0, group);
+  builder.box(0.14, 0.5, 0.55, palette.legs ?? "#4d6458", 1, 0.27, 0, group);
 }
 
 /** A raised planter with a hedge in it. */
@@ -283,8 +309,9 @@ export function lantern(
   z: number,
   color = "#ffe9b8",
   height = 3.1,
+  post = "#4d5b52",
 ): void {
-  builder.box(0.16, height, 0.16, "#4d5b52", x, height / 2, z);
+  builder.box(0.16, height, 0.16, post, x, height / 2, z);
   const head = builder.box(0.42, 0.5, 0.42, color, x, height + 0.1, z);
   (head.material as THREE.MeshStandardMaterial).emissive?.set(color);
   head.castShadow = false;

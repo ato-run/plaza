@@ -715,3 +715,40 @@ kbd {
     animation-duration: 0.01ms !important;
   }
 }
+
+/* Time of day: a two-way switch beside the room chip. Interactive, so it
+   opts back into pointer events like the chip. */
+.pg-time {
+  pointer-events: auto;
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.71);
+  border-radius: 30px;
+}
+
+.pg-time button {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: #50615a;
+  background: transparent;
+  border: 0;
+  border-radius: 24px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.pg-time button.pg-time-on {
+  background: #ffffff;
+  color: #1e2a24;
+  box-shadow: 0 1px 3px rgba(30, 42, 36, 0.12);
+}
+
+.pg-time button:focus-visible {
+  outline: 2px solid #368863;
+  outline-offset: 1px;
+}
