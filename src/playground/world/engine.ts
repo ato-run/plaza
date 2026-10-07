@@ -91,6 +91,8 @@ export interface Engine {
 
 const REACTION_KEYS = ["Digit1", "Digit2", "Digit3", "Digit4"];
 const NO_COLLIDERS: readonly Collider[] = [];
+/** How long a jump pressed in mid-air waits for the ground. */
+const JUMP_BUFFER_MS = 150;
 
 export function createEngine(options: EngineOptions): Engine {
   const { host } = options;
@@ -204,6 +206,14 @@ export function createEngine(options: EngineOptions): Engine {
   let vy = 0;
   let grounded = true;
   let jumpRequested = false;
+  // When the jump was asked for. A press made a moment before touching down
+  // (a step, a dune, the end of the last jump) is kept briefly and honoured
+  // on landing instead of being dropped.
+  let jumpRequestedAt = 0;
+  const requestJump = () => {
+    jumpRequested = true;
+    jumpRequestedAt = performance.now();
+  };
   let mobileCrouch = false;
 
   /** Dev harness only: a pinned World clock for same-frame comparisons. */
@@ -276,7 +286,7 @@ export function createEngine(options: EngineOptions): Engine {
       // Jump is edge-triggered; holding Space must not bunny-hop from repeat.
       if (engaged() && !keyboard.repeat) {
         keyboard.preventDefault();
-        jumpRequested = true;
+        requestJump();
       }
       return;
     }
@@ -426,7 +436,9 @@ export function createEngine(options: EngineOptions): Engine {
       groundEye,
       jumpRequested && !paused,
     );
-    jumpRequested = false;
+    if (jumpRequested && (grounded || performance.now() - jumpRequestedAt > JUMP_BUFFER_MS)) {
+      jumpRequested = false;
+    }
     vy = vertical.vy;
     grounded = vertical.grounded;
     camera.position.y = vertical.y;
@@ -561,7 +573,7 @@ export function createEngine(options: EngineOptions): Engine {
     },
 
     jump() {
-      if (!paused) jumpRequested = true;
+      if (!paused) requestJump();
     },
 
     setTimeOfDay(id) {

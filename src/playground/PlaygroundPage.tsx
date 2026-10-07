@@ -196,6 +196,13 @@ export default function PlaygroundPage() {
   }, []);
   const identityTimeoutRef = useRef<number | undefined>(undefined);
   const openMenuRef = useRef(openMenu);
+  const toggleCrouch = useCallback(() => {
+    setCrouched((previous) => {
+      const next = !previous;
+      worldRef.current?.setCrouching(next);
+      return next;
+    });
+  }, []);
   openMenuRef.current = openMenu;
   const [crouched, setCrouched] = useState(false);
   const [runnerBacked, setRunnerBacked] = useState(false);
@@ -1205,7 +1212,9 @@ export default function PlaygroundPage() {
         </div>
       ) : null}
 
-      {target && !chatting ? (
+      {/* Mascots get no prompt: they are scenery you can still pet with E,
+          not something the HUD should keep pointing at. */}
+      {target && target.kind !== "mascot" && !chatting ? (
         <div className="pg-interaction">
           <span className="pg-interaction-kind">{targetKindLabel(target)}</span>
           <strong>{targetTitle(target)}</strong>
@@ -1274,30 +1283,24 @@ export default function PlaygroundPage() {
 
       <MobileJoystick onChange={(x, y) => worldRef.current?.setJoystick(x, y)} />
 
+      {/* Act on touch-DOWN, not click: a phone does not synthesize a click
+          for a second finger while the first is on the joystick. */}
       <div className="pg-actions">
-        <button
-          type="button"
+        <PressButton
           className={`pg-action${crouched ? " pg-action--active" : ""}`}
           aria-pressed={crouched}
           aria-label="Crouch"
-          onClick={() =>
-            setCrouched((previous) => {
-              const next = !previous;
-              worldRef.current?.setCrouching(next);
-              return next;
-            })
-          }
+          onPress={toggleCrouch}
         >
           Crouch
-        </button>
-        <button
-          type="button"
+        </PressButton>
+        <PressButton
           className="pg-action"
           aria-label="Jump"
-          onClick={() => worldRef.current?.jump()}
+          onPress={() => worldRef.current?.jump()}
         >
           Jump
-        </button>
+        </PressButton>
       </div>
 
       {chatting ? (
@@ -1371,51 +1374,113 @@ function MobileJoystick({
 }) {
   const baseRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef<HTMLDivElement>(null);
-  const pointerRef = useRef(-1);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
-  const move = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (event.pointerId !== pointerRef.current) return;
-      const base = baseRef.current;
-      if (!base) return;
+  // Touch Events, tracked by touch identifier — not Pointer Events. When a
+  // second finger lands (say on Jump) a phone may decide a gesture has begun
+  // and pointercancel the stick finger, which used to zero the stick and stop
+  // the walk mid-jump. Touch events keep arriving for that finger until it
+  // actually lifts.
+  useEffect(() => {
+    const base = baseRef.current;
+    if (!base) return;
+    let touchId: number | null = null;
+    const radius = 34;
+    const place = (touch: Touch) => {
       const rect = base.getBoundingClientRect();
-      let x = event.clientX - rect.left - rect.width / 2;
-      let y = event.clientY - rect.top - rect.height / 2;
+      let x = touch.clientX - rect.left - rect.width / 2;
+      let y = touch.clientY - rect.top - rect.height / 2;
       const length = Math.hypot(x, y);
-      const radius = 34;
       if (length > radius) {
         x *= radius / length;
         y *= radius / length;
       }
-      if (stickRef.current) {
-        stickRef.current.style.transform = `translate(${x}px, ${y}px)`;
+      if (stickRef.current) stickRef.current.style.transform = `translate(${x}px, ${y}px)`;
+      onChangeRef.current(x / radius, -y / radius);
+    };
+    const find = (list: TouchList) => {
+      for (let index = 0; index < list.length; index += 1) {
+        if (list[index].identifier === touchId) return list[index];
       }
-      onChange(x / radius, -y / radius);
-    },
-    [onChange],
-  );
-
-  const end = useCallback(() => {
-    pointerRef.current = -1;
-    if (stickRef.current) stickRef.current.style.transform = "";
-    onChange(0, 0);
-  }, [onChange]);
+      return null;
+    };
+    const start = (event: TouchEvent) => {
+      event.preventDefault();
+      if (touchId !== null) return;
+      const touch = event.changedTouches[0];
+      touchId = touch.identifier;
+      place(touch);
+    };
+    const move = (event: TouchEvent) => {
+      const touch = touchId === null ? null : find(event.changedTouches);
+      if (touch) place(touch);
+    };
+    const end = (event: TouchEvent) => {
+      if (touchId === null || !find(event.changedTouches)) return;
+      touchId = null;
+      if (stickRef.current) stickRef.current.style.transform = "";
+      onChangeRef.current(0, 0);
+    };
+    base.addEventListener("touchstart", start, { passive: false });
+    window.addEventListener("touchmove", move, { passive: true });
+    window.addEventListener("touchend", end);
+    window.addEventListener("touchcancel", end);
+    return () => {
+      base.removeEventListener("touchstart", start);
+      window.removeEventListener("touchmove", move);
+      window.removeEventListener("touchend", end);
+      window.removeEventListener("touchcancel", end);
+    };
+  }, []);
 
   return (
-    <div
-      className="pg-joystick"
-      ref={baseRef}
-      aria-hidden="true"
-      onPointerDown={(event) => {
-        pointerRef.current = event.pointerId;
-        event.currentTarget.setPointerCapture(event.pointerId);
-        move(event);
-      }}
-      onPointerMove={move}
-      onPointerUp={end}
-      onPointerCancel={end}
-    >
+    <div className="pg-joystick" ref={baseRef} aria-hidden="true">
       <div ref={stickRef} />
     </div>
+  );
+}
+
+/**
+ * A button that acts the moment it is touched — on touchstart, so it works as
+ * a second finger while the first walks — and still on a mouse press or a
+ * keyboard activation.
+ */
+function PressButton({
+  onPress,
+  children,
+  ...rest
+}: Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "onClick" | "onPointerDown"> & {
+  onPress: () => void;
+}) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const onPressRef = useRef(onPress);
+  onPressRef.current = onPress;
+  useEffect(() => {
+    const button = ref.current;
+    if (!button) return;
+    const start = (event: TouchEvent) => {
+      event.preventDefault();
+      onPressRef.current();
+    };
+    button.addEventListener("touchstart", start, { passive: false });
+    return () => button.removeEventListener("touchstart", start);
+  }, []);
+  return (
+    <button
+      ref={ref}
+      type="button"
+      {...rest}
+      onPointerDown={(event) => {
+        if (event.pointerType === "touch") return; // handled by touchstart
+        event.preventDefault();
+        onPressRef.current();
+      }}
+      onClick={(event) => {
+        if (event.detail === 0) onPressRef.current(); // keyboard
+      }}
+    >
+      {children}
+    </button>
   );
 }

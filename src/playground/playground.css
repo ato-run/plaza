@@ -23,6 +23,24 @@
   /* Phones with a notch: keep the HUD out from under it. */
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
     env(safe-area-inset-bottom) env(safe-area-inset-left);
+  /* A game view, not a document: dragging to look, double-clicking or a
+     long press must not paint text selection, callouts or tap flashes over
+     the HUD. Fields people type into opt back in below. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  /* No browser gestures anywhere in the view: a second finger landing on
+     the HUD (between buttons, on the Talk pill) must not start a pinch
+     that cancels the finger on the stick. The menu scrolls itself. */
+  touch-action: none;
+}
+
+.pg input,
+.pg textarea {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
 }
 
 .pg-world {
@@ -477,7 +495,7 @@ kbd {
     font: inherit;
     font-size: 13px;
     cursor: pointer;
-    touch-action: manipulation;
+    touch-action: none;
   }
 
   .pg-action--active {
@@ -626,6 +644,7 @@ kbd {
 }
 
 .pg-menu {
+  touch-action: pan-y;
   position: absolute;
   top: 50%;
   left: 50%;
