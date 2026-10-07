@@ -45,6 +45,24 @@ const POLY_HAVEN = "https://api.polyhaven.com/files";
 const TEXTURES = [
   { slug: "sand_03", maps: { Diffuse: "diff", nor_gl: "nor", arm: "arm" } },
   { slug: "aerial_beach_01", maps: { Diffuse: "diff", nor_gl: "nor" } },
+  // Props: coral limestone (fountain), coral stone masonry (planters),
+  // teak-like fine grain (bench slats).
+  { slug: "coral_fort_wall_01", maps: { Diffuse: "diff", nor_gl: "nor", arm: "arm" } },
+  { slug: "coral_stone_wall", maps: { Diffuse: "diff", nor_gl: "nor", arm: "arm" } },
+  { slug: "fine_grained_wood", maps: { Diffuse: "diff", nor_gl: "nor", arm: "arm" } },
+];
+
+/**
+ * Scanned props shipped as geometry-only GLB (node and material NAMES kept,
+ * so code can rebuild each material) plus per-material JPEG maps named
+ * `<material>_<slot>_<size>.jpg`. Plants also ship their alpha cutout map
+ * (Poly Haven publishes it separately; their glTF uses MASK).
+ */
+const PROPS = [
+  { slug: "Lantern_01", name: "lantern", ratio: 0.18, size: 512, alpha: false },
+  { slug: "anthurium_botany_01", name: "anthurium", ratio: 0.12, size: 1024, alpha: true },
+  { slug: "calathea_orbifolia_01", name: "calathea", ratio: 0.4, size: 1024, alpha: true },
+  { slug: "fern_02", name: "fern", ratio: 1, size: 1024, alpha: true },
 ];
 
 /**
@@ -178,6 +196,51 @@ for (const { slug, name, lod0, lod1 } of ROCKS) {
     await io.write(target, document);
     record(target, { source: listing.url, triangles: triangles(target), textures: "none (separate JPEG)" });
   }
+}
+
+for (const { slug, name, ratio, size, alpha } of PROPS) {
+  const all = await files(slug);
+  const listing = all.gltf["1k"].gltf;
+  const base = join(CACHE, slug);
+  const entry = join(base, `${slug}.gltf`);
+  await download(listing.url, entry);
+  for (const [path, include] of Object.entries(listing.include)) {
+    await download(include.url, join(base, path));
+  }
+  const work = join(CACHE, `${name}.glb`);
+  const target = join(OUT, "models", `${name}.glb`);
+  gltf("weld", entry, work);
+  if (ratio < 1) gltf("simplify", work, work, "--ratio", String(ratio), "--error", "0.01");
+  gltf("resize", work, work, "--width", String(size), "--height", String(size));
+  gltf("prune", work, work);
+  gltf("dedup", work, work);
+
+  const document = await io.read(work);
+  for (const material of document.getRoot().listMaterials()) {
+    const prefix = material.getName().replace(/[^A-Za-z0-9_-]/g, "_");
+    for (const [slot, texture] of [
+      ["color", material.getBaseColorTexture()],
+      ["normal", material.getNormalTexture()],
+      ["orm", material.getMetallicRoughnessTexture()],
+    ]) {
+      const file = join(OUT, "textures", `${prefix}_${slot}_${size}.jpg`);
+      if (extract(texture, file)) {
+        record(file, { source: listing.url, dimensions: `${size}x${size}` });
+      }
+    }
+    if (alpha) {
+      const url = all.Alpha["1k"].jpg.url;
+      const cached = join(base, "alpha_1k.jpg");
+      await download(url, cached);
+      const file = join(OUT, "textures", `${prefix}_alpha_1k.jpg`);
+      copyFileSync(cached, file);
+      record(file, { source: url, dimensions: "1024x1024" });
+    }
+  }
+  for (const texture of document.getRoot().listTextures()) texture.dispose();
+  for (const extension of document.getRoot().listExtensionsUsed()) extension.dispose();
+  await io.write(target, document);
+  record(target, { source: listing.url, triangles: triangles(target), textures: "none (separate JPEG)" });
 }
 
 writeFileSync(
