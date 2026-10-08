@@ -262,6 +262,8 @@ export const centralPlaza: WorldDefinition = {
         say: (text, durationMs) => guide.say(text, performance.now(), durationMs),
       },
 
+      neighbors: { hold: (id, on) => residents.hold(id, on) },
+
       labels: [{ element: guide.label, position: guide.labelPosition }, ...residents.labels],
 
       // The plaza is flat at 0; beyond it people may walk the beach down

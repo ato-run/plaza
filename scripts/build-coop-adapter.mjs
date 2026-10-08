@@ -79,7 +79,7 @@ execFileSync(
 );
 // One self-contained declaration file for the API.
 const guideTypes = [];
-for (const name of ["nagi", "knowledge"]) {
+for (const name of ["nagi", "residents", "knowledge"]) {
   guideTypes.push(
     (await readFile(`.tmp/guide-types/${name}.d.ts`, "utf8"))
       .replace(/^import .*$/gm, "")

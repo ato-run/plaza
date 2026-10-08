@@ -8,13 +8,25 @@
  * never names an action directly: it may only return choice IDs from
  * CHOICE_IDS, which both sides map to the same GuideAction.
  */
-import type { GuideAction, GuideChoice, GuideContext, PlaceId, PracticeSkill } from "./nagi";
-import { PLACES } from "./nagi";
+import type { GuideAction, GuideChoice, GuideContext, GuideReply, PlaceId, PracticeSkill } from "./nagi";
+import { departure, PLACE_BY_ID, PLACES, reply, understand } from "./nagi";
+import {
+  LINES,
+  PERSONALITY_STYLE,
+  RESIDENT_BY_ID,
+  RESIDENT_PROFILES,
+  type ResidentId,
+} from "./residents";
 
-export const GUIDE_KNOWLEDGE_VERSION = "plaza.guide@1";
+export const GUIDE_KNOWLEDGE_VERSION = "plaza.guide@2";
 
-export type NpcId = "nagi";
-export const NPC_IDS: readonly NpcId[] = ["nagi"];
+/** Everyone in Plaza you can talk to: the guide and the ten residents. */
+export type NpcId = "nagi" | ResidentId;
+export const NPC_IDS: readonly NpcId[] = ["nagi", ...RESIDENT_PROFILES.map((resident) => resident.id)];
+
+export function isNpcId(value: unknown): value is NpcId {
+  return typeof value === "string" && (NPC_IDS as readonly string[]).includes(value);
+}
 
 /** Every choice a guide may offer, by stable ID. */
 export const CHOICE_CATALOG: Readonly<Record<string, GuideChoice>> = (() => {
@@ -44,6 +56,10 @@ export const CHOICE_CATALOG: Readonly<Record<string, GuideChoice>> = (() => {
   for (const place of PLACES) {
     node(`place:${place.id}`, `Go to ${place.label}`, { kind: "place", place: place.id as PlaceId });
   }
+  // A resident points the way and lets you set off; only Nagi describes it first.
+  for (const place of PLACES) {
+    node(`go:${place.id}`, `Head to ${place.label}`, { kind: "go", place: place.id as PlaceId });
+  }
   node("menu:profile", "Open the Menu (name and icon)", { kind: "menu", section: "profile" });
   node("menu:world", "Open the Menu (time and worlds)", { kind: "menu", section: "world" });
   node("menu:controls", "Open the Menu (controls)", { kind: "menu", section: "controls" });
@@ -52,19 +68,32 @@ export const CHOICE_CATALOG: Readonly<Record<string, GuideChoice>> = (() => {
 
 export const CHOICE_IDS: readonly string[] = Object.keys(CHOICE_CATALOG);
 
+/** The choices each kind of character may offer: Nagi teaches, residents point the way. */
+export function choiceIdsFor(npcId: NpcId): readonly string[] {
+  return npcId === "nagi"
+    ? CHOICE_IDS.filter((id) => !id.startsWith("go:"))
+    : CHOICE_IDS.filter((id) => id.startsWith("go:") || id.startsWith("menu:"));
+}
+
 /**
  * IDs → choices the visitor can actually use right now. Unknown IDs, and
  * choices the situation rules out (reacting with nobody near, an exhibit
  * that is not there, talking while signed out), are dropped.
  */
-export function choicesFromIds(ids: readonly unknown[], context: GuideContext, max = 3): GuideChoice[] {
+export function choicesFromIds(
+  ids: readonly unknown[],
+  context: GuideContext,
+  npcId: NpcId = "nagi",
+  max = 3,
+): GuideChoice[] {
+  const allowed = new Set(choiceIdsFor(npcId));
   const out: GuideChoice[] = [];
   const seen = new Set<string>();
   for (const id of ids) {
-    if (typeof id !== "string" || seen.has(id) || !Object.hasOwn(CHOICE_CATALOG, id)) continue;
+    if (typeof id !== "string" || seen.has(id) || !allowed.has(id)) continue;
     if (id === "practice:react" && context.peopleNearby === 0) continue;
     if (id === "practice:talk" && !context.canPost) continue;
-    if (id === "place:exhibits" && context.exhibits === 0) continue;
+    if ((id === "place:exhibits" || id === "go:exhibits") && context.exhibits === 0) continue;
     if (id === "menu:world" && !context.hasTimesOfDay) continue;
     seen.add(id);
     out.push(CHOICE_CATALOG[id]);
@@ -73,19 +102,58 @@ export function choicesFromIds(ids: readonly unknown[], context: GuideContext, m
   return out;
 }
 
-export const PERSONAS: Readonly<Record<NpcId, { name: string; persona: string }>> = {
-  nagi: {
-    name: "Nagi",
-    persona: [
-      "You are Nagi, the guide of Plaza.",
-      "You are kind, calm and easy to understand for first-time visitors.",
-      "You speak politely and warmly, and you keep every reply short: one to three sentences, one point at a time.",
-      "You greet lightly and otherwise help when asked; you do not lecture.",
-      "Your role: introduce Plaza, explain the controls, guide people to places, and help sort out what is going wrong.",
-      "Reply in the language the visitor writes in (English if unsure).",
-    ].join(" "),
-  },
+export interface NpcProfile {
+  id: NpcId;
+  name: string;
+  /** Shown under the name in the conversation. */
+  role: "Guide" | "Neighbor";
+  /** A small mark for the conversation header. */
+  avatar: string;
+  persona: string;
+}
+
+const NAGI_PERSONA = [
+  "You are Nagi, the guide of Plaza.",
+  "You are kind, calm and easy to understand for first-time visitors.",
+  "You speak politely and warmly, and you keep every reply short: one to three sentences, one point at a time.",
+  "You greet lightly and otherwise help when asked; you do not lecture.",
+  "Your role: introduce Plaza, explain the controls, guide people to places, and help sort out what is going wrong.",
+  "Reply in the language the visitor writes in (English if unsure).",
+].join(" ");
+
+const SPECIES_MARK: Record<string, string> = {
+  cat: "🐱", dog: "🐶", panda: "🐼", fox: "🦊", penguin: "🐧",
+  rabbit: "🐰", bear: "🐻", koala: "🐨", frog: "🐸", owl: "🦉",
 };
+
+function residentPersona(id: ResidentId): string {
+  const me = RESIDENT_BY_ID.get(id)!;
+  const neighbours = RESIDENT_PROFILES.filter((other) => other.id !== id)
+    .map((other) => `${other.name} the ${other.species}`)
+    .join(", ");
+  return [
+    `You are ${me.name}, a ${me.species} who lives in Plaza, a shared 3D beach plaza.`,
+    `Your personality: ${PERSONALITY_STYLE[me.personality]}.`,
+    "You are a neighbor, not the guide: chat in character about your day, the beach, the fountain, the weather and the other residents.",
+    `Your neighbors are ${neighbours}, and Nagi, the guide who stands near the fountain.`,
+    "Keep every reply to one or two short sentences.",
+    "If the visitor asks how to do something in Plaza, answer briefly using only the facts below, or suggest they ask Nagi.",
+    "You cannot follow the visitor, give them items, or remember them after this conversation; never pretend you can.",
+    "Reply in the language the visitor writes in (English if unsure).",
+  ].join(" ");
+}
+
+export function npcProfile(id: NpcId): NpcProfile {
+  if (id === "nagi") return { id, name: "Nagi", role: "Guide", avatar: "👒", persona: NAGI_PERSONA };
+  const resident = RESIDENT_BY_ID.get(id)!;
+  return {
+    id,
+    name: resident.name,
+    role: "Neighbor",
+    avatar: SPECIES_MARK[resident.species] ?? "🙂",
+    persona: residentPersona(id),
+  };
+}
 
 /** What is true in this Plaza build, phrased for the visitor's situation. */
 export function plazaFacts(context: GuideContext & { signedIn: boolean }): string {
@@ -117,12 +185,71 @@ export function plazaFacts(context: GuideContext & { signedIn: boolean }): strin
 }
 
 /** The response contract the model must follow; the API validates it. */
-export const RESPONSE_CONTRACT = [
-  "Respond with ONLY a JSON object, no other text:",
-  '{"text": "<your reply, 1-3 sentences>", "choices": ["<choice id>", ...]}',
-  "choices: up to 3 IDs from this list that would be useful next steps, most useful first:",
-  CHOICE_IDS.join(", "),
-  "Never invent choice IDs, coordinates, commands or features. If you are unsure what the visitor wants, ask one short clarifying question and offer node:controls and node:places.",
-].join("\n");
+export function responseContract(npcId: NpcId): string {
+  const ids = choiceIdsFor(npcId);
+  return [
+    "Respond with ONLY a JSON object, no other text:",
+    '{"text": "<your reply>", "choices": ["<choice id>", ...]}',
+    npcId === "nagi"
+      ? "choices: up to 3 IDs from this list that would be useful next steps, most useful first:"
+      : "choices: usually []. Only when the visitor wants to go somewhere or change a setting, up to 2 IDs from this list:",
+    ids.join(", "),
+    npcId === "nagi"
+      ? "Never invent choice IDs, coordinates, commands or features. If you are unsure what the visitor wants, ask one short clarifying question and offer node:controls and node:places."
+      : "Never invent choice IDs, coordinates, commands or features.",
+  ].join("\n");
+}
+
+/** What a character suggests when the model offered nothing usable. */
+export function defaultChoiceIds(npcId: NpcId): readonly string[] {
+  return npcId === "nagi" ? DEFAULT_CHOICE_IDS : [];
+}
 
 export const DEFAULT_CHOICE_IDS = ["node:whatCan", "node:places", "node:about"];
+
+/** The instructions for a character, composed only from this build's facts. */
+export function npcInstructions(npcId: NpcId, context: GuideContext & { signedIn: boolean }): string {
+  return [
+    npcProfile(npcId).persona,
+    "",
+    `Facts about Plaza (${GUIDE_KNOWLEDGE_VERSION}). Only state things listed here; if asked about anything else, say you are not sure and suggest what Plaza does have:`,
+    plazaFacts(context),
+  ].join("\n");
+}
+
+/** How a resident opens a conversation. */
+export function residentGreeting(id: ResidentId, seed: number): GuideReply {
+  const greet = LINES[RESIDENT_BY_ID.get(id)!.personality].greet;
+  return { text: greet[Math.abs(Math.floor(seed)) % greet.length], choices: [] };
+}
+
+function textSeed(text: string): number {
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) hash = (hash * 31 + text.charCodeAt(index)) | 0;
+  return Math.abs(hash);
+}
+
+/**
+ * The rule-based answer, without a model: Nagi's own guide, or a resident's
+ * small talk — pointing to Nagi when the visitor seems to want help.
+ */
+export function npcFallback(npcId: NpcId, message: string, context: GuideContext): GuideReply {
+  const intent = understand(message);
+  if (npcId === "nagi") {
+    if ("place" in intent) {
+      const place = PLACE_BY_ID.get(intent.place);
+      if (place) return departure(place);
+    }
+    return reply("node" in intent ? intent.node : "unclear", context);
+  }
+  const resident = RESIDENT_BY_ID.get(npcId)!;
+  const talk = LINES[resident.personality].talk;
+  const line = talk[textSeed(message) % talk.length];
+  if ("place" in intent) {
+    return { text: line, choices: choicesFromIds([`go:${intent.place}`], context, npcId) };
+  }
+  if ("node" in intent && intent.node !== "unclear") {
+    return { text: `${line} If you need help, Nagi by the fountain knows everything.`, choices: [] };
+  }
+  return { text: line, choices: [] };
+}

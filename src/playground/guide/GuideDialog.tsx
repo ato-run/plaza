@@ -1,11 +1,13 @@
 /**
- * Talking with Nagi: her line, the choices that follow from it, and a field
- * for asking in your own words. The world pauses while it is open; picking a
- * lesson or a destination closes it and hands you back to the plaza.
+ * Talking with someone in Plaza — Nagi or one of the residents: their line,
+ * the choices that follow from it, and a field for saying something in your
+ * own words. The world pauses while it is open; picking a lesson or a
+ * destination closes it and hands you back to the plaza.
  */
 import { useEffect, useRef, useState } from "react";
 
-import { askGuide, endGuideConversation, NpcChatError, newId } from "./chatClient";
+import { askNpc, endNpcConversation, NpcChatError, newId } from "./chatClient";
+import { npcFallback, type NpcProfile } from "./knowledge";
 import {
   departure,
   PLACE_BY_ID,
@@ -18,20 +20,22 @@ import {
 
 interface GuideDialogProps {
   open: boolean;
+  /** Who you are talking to. */
+  npc: NpcProfile;
   context: GuideContext;
   /** Where the conversation starts this time (greeting on a first talk). */
   start: GuideReply;
   onAction(action: GuideAction): void;
   onClose(): void;
   /**
-   * Answer free text with the guide conversation API, which uses the model
-   * for signed-in visitors and the rule-based guide for everyone else; when
+   * Answer free text with the NPC conversation API, which uses the model
+   * for signed-in visitors and the rule-based answer for everyone else; when
    * the API is unreachable (local dev), the page answers by rule itself.
    */
   useModel: boolean;
 }
 
-export function GuideDialog({ open, context, start, onAction, onClose, useModel }: GuideDialogProps) {
+export function GuideDialog({ open, npc, context, start, onAction, onClose, useModel }: GuideDialogProps) {
   const [current, setCurrent] = useState<GuideReply>(start);
   const [asked, setAsked] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -47,7 +51,7 @@ export function GuideDialog({ open, context, start, onAction, onClose, useModel 
     setThinking(false);
     const conversation = conversationRef.current;
     conversationRef.current = null;
-    if (conversation?.used) endGuideConversation(conversation.id);
+    if (conversation?.used) endNpcConversation(npc.id, conversation.id);
   };
 
   useEffect(() => {
@@ -95,6 +99,11 @@ export function GuideDialog({ open, context, start, onAction, onClose, useModel 
   };
 
   const answerLocally = (text: string) => {
+    if (npc.id !== "nagi") {
+      setAsked(text);
+      setCurrent(npcFallback(npc.id, text, context));
+      return;
+    }
     const intent = understand(text);
     if ("place" in intent) {
       choose({ kind: "place", place: intent.place }, text);
@@ -119,7 +128,8 @@ export function GuideDialog({ open, context, start, onAction, onClose, useModel 
     setAsked(text);
     setThinking(true);
     panelRef.current?.focus();
-    askGuide({
+    askNpc({
+      npcId: npc.id,
       conversationId: conversation.id,
       requestId: newId("req"),
       message: text,
@@ -158,7 +168,7 @@ export function GuideDialog({ open, context, start, onAction, onClose, useModel 
       ref={panelRef}
       className="pg-guide"
       role="dialog"
-      aria-label="Talk with Nagi"
+      aria-label={`Talk with ${npc.name}`}
       tabIndex={-1}
       onKeyDown={(event) => {
         event.stopPropagation();
@@ -167,11 +177,11 @@ export function GuideDialog({ open, context, start, onAction, onClose, useModel 
     >
       <header className="pg-guide-head">
         <span className="pg-guide-avatar" aria-hidden="true">
-          👒
+          {npc.avatar}
         </span>
         <div>
-          <strong>Nagi</strong>
-          <small>Guide</small>
+          <strong>{npc.name}</strong>
+          <small>{npc.role}</small>
         </div>
         <button type="button" className="pg-menu-close" onClick={onClose} aria-label="Close">
           ✕
@@ -181,7 +191,7 @@ export function GuideDialog({ open, context, start, onAction, onClose, useModel 
       <p className="pg-guide-line" aria-live="polite">
         {thinking ? (
           <span className="pg-guide-thinking">
-            Nagi is thinking<span aria-hidden="true">…</span>
+            {npc.name} is thinking<span aria-hidden="true">…</span>
           </span>
         ) : (
           current.text
@@ -205,13 +215,13 @@ export function GuideDialog({ open, context, start, onAction, onClose, useModel 
         <input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder="Ask anything (e.g. What can I do here?)"
-          aria-label="Ask Nagi"
+          placeholder={npc.id === "nagi" ? "Ask anything (e.g. What can I do here?)" : `Say something to ${npc.name}…`}
+          aria-label={`Say something to ${npc.name}`}
           maxLength={400}
           disabled={thinking}
         />
         <button type="submit" disabled={!draft.trim() || thinking}>
-          Ask
+          {npc.id === "nagi" ? "Ask" : "Say"}
         </button>
       </form>
     </div>

@@ -1,9 +1,10 @@
 /**
- * The page's side of the guide conversation API (same origin, on the
- * Instance host). The server decides who you are, what the guide knows and
- * which model answers; this only sends your words and display hints, and
- * hands back a validated reply.
+ * The page's side of the NPC conversation API (same origin, on the
+ * Instance host). The server decides who you are, what each character knows
+ * and which model answers; this only sends who you are talking to, your
+ * words and display hints, and hands back a validated reply.
  */
+import type { NpcId } from "./knowledge";
 import type { GuideChoice, GuideContext } from "./nagi";
 
 export const NPC_CHAT_PATH = "/__ato/app-room/npc/chat";
@@ -46,7 +47,8 @@ function isReply(value: unknown): value is NpcChatReply {
   );
 }
 
-export async function askGuide(input: {
+export async function askNpc(input: {
+  npcId: NpcId;
   conversationId: string;
   requestId: string;
   message: string;
@@ -61,7 +63,7 @@ export async function askGuide(input: {
     headers: { "content-type": "application/json" },
     signal,
     body: JSON.stringify({
-      npcId: "nagi",
+      npcId: input.npcId,
       conversationId: input.conversationId,
       requestId: input.requestId,
       message: input.message,
@@ -81,14 +83,14 @@ export async function askGuide(input: {
 }
 
 /** Close the conversation server-side; best effort, never awaited by the UI. */
-export function endGuideConversation(conversationId: string): void {
+export function endNpcConversation(npcId: NpcId, conversationId: string): void {
   try {
     void fetch(NPC_END_PATH, {
       method: "POST",
       credentials: "same-origin",
       keepalive: true,
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ npcId: "nagi", conversationId }),
+      body: JSON.stringify({ npcId, conversationId }),
     }).catch(() => {});
   } catch {
     // Expiry (15 minutes) cleans up whatever this misses.

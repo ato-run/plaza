@@ -78,6 +78,8 @@ export interface WorldHandle {
   interactWithTarget(): void;
   /** Have the World's guide say something (no-op where there is none). */
   guideSay(text: string): void;
+  /** Keep a resident in place, facing the viewer, while they talk (no-op where there are none). */
+  holdNeighbor(id: string, on: boolean): void;
   /** Mark a destination on the ground with a light column; null clears it. */
   setWaypoint(point: { x: number; z: number } | null): void;
   /** Where the viewer is and which way they face — for the guide's lessons. */
@@ -384,6 +386,10 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
       engine.world?.guide?.say(text);
     },
 
+    holdNeighbor(id, on) {
+      engine.world?.neighbors?.hold(id, on);
+    },
+
     setWaypoint(point) {
       if (point) placeWaypoint(point);
       else clearWaypoint();
@@ -425,8 +431,8 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
 
     interactWithTarget() {
       if (!currentTarget) return;
-      // A mascot (or a seat) is the World's own business — it never reaches
-      // the page, and nothing leaves the browser.
+      // A seat is the World's own business — it never reaches the page.
+      // Residents (mascots) and the guide open a conversation on the page.
       if (activateLocal(targetLocalId(currentTarget))) return;
       hooks.onInteract(currentTarget);
     },

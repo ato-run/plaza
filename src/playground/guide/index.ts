@@ -6,3 +6,4 @@
  */
 export * from "./nagi";
 export * from "./knowledge";
+export * from "./residents";

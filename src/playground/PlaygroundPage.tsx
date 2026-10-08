@@ -22,6 +22,7 @@ import { CoopControls } from "./coop/CoopControls";
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GuideDialog } from "./guide/GuideDialog";
+import { isNpcId, npcProfile, residentGreeting, type NpcId } from "./guide/knowledge";
 import {
   ENTRY_CHOICES,
   PLACE_BY_ID,
@@ -122,10 +123,9 @@ function parseRunnerProjection(value: unknown): PlaygroundRunnerState | null {
 /**
  * How a target is described.
  *
- * A mascot is deliberately labelled as a guide rather than as a person: it
- * looks like an inhabitant through a crosshair, and a visitor who tries to
- * talk to one should learn it is scenery before they wonder why nobody
- * answered.
+ * A mascot (a resident) is labelled as a neighbor rather than as a person:
+ * talking to one opens a conversation with a character, not with somebody
+ * else in the plaza, and the label says so before you start.
  */
 function targetKindLabel(target: WorldTarget): string {
   switch (target.kind) {
@@ -212,8 +212,10 @@ export default function PlaygroundPage() {
   }, []);
   const identityTimeoutRef = useRef<number | undefined>(undefined);
 
-  // ---- Nagi: conversation, lessons and journeys ---------------------------
+  // ---- Conversations (Nagi and the residents), lessons and journeys -------
+  /** A conversation is open; `talkingTo` says with whom. */
   const [guideOpen, setGuideOpen] = useState(false);
+  const [talkingTo, setTalkingTo] = useState<NpcId>("nagi");
   const [guideStart, setGuideStart] = useState<GuideReply | null>(null);
   const guideTalkedRef = useRef(false);
   /** A line from Nagi shown in the HUD while you practise or travel. */
@@ -230,10 +232,19 @@ export default function PlaygroundPage() {
     setGuideStart(
       first ? null : { text: "Hello again. What can I help you with?", choices: [...ENTRY_CHOICES] },
     );
+    setTalkingTo("nagi");
     setGuideOpen(true);
   }, []);
   const openGuideRef = useRef(openGuide);
   openGuideRef.current = openGuide;
+  const openNeighbor = useCallback((id: string) => {
+    if (!isNpcId(id) || id === "nagi") return;
+    setGuideStart(residentGreeting(id, Date.now() / 1000));
+    setTalkingTo(id);
+    setGuideOpen(true);
+  }, []);
+  const openNeighborRef = useRef(openNeighbor);
+  openNeighborRef.current = openNeighbor;
   const openMenuRef = useRef(openMenu);
   const toggleCrouch = useCallback(() => {
     setCrouched((previous) => {
@@ -944,8 +955,12 @@ export default function PlaygroundPage() {
             openGuideRef.current();
             return;
           }
-          // Mascots and seats never reach here — the World handles its own
-          // local affordances, so this page only ever opens Software.
+          if (item.kind === "mascot") {
+            openNeighborRef.current(item.mascotId);
+            return;
+          }
+          // Seats never reach here — the World handles its own local
+          // affordances, so beyond conversations this page only opens Software.
           if (item.kind !== "app" && item.kind !== "activity") return;
           const card =
             item.kind === "app"
@@ -1123,6 +1138,14 @@ export default function PlaygroundPage() {
       openMenuRef.current(action.section);
     }
   }, []);
+
+  // A resident you are talking to stays put and faces you until you are done.
+  useEffect(() => {
+    if (!guideOpen || talkingTo === "nagi") return;
+    const world = worldRef.current;
+    world?.holdNeighbor(talkingTo, true);
+    return () => world?.holdNeighbor(talkingTo, false);
+  }, [guideOpen, talkingTo]);
 
   // Watch the lesson or journey in progress, a few times a second.
   useEffect(() => {
@@ -1371,6 +1394,7 @@ export default function PlaygroundPage() {
 
       <GuideDialog
         open={guideOpen}
+        npc={npcProfile(talkingTo)}
         context={guideContext()}
         start={guideStart ?? guideReply("greeting", guideContext())}
         onAction={runGuideAction}
