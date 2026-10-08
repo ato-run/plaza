@@ -152,12 +152,6 @@ function targetTitle(target: WorldTarget): string {
 
 function targetActionLabel(target: WorldTarget): string {
   switch (target.kind) {
-    case "person":
-      return "Talk";
-    case "mascot":
-      return "Talk";
-    case "guide":
-      return "Talk";
     case "seat":
       return "Sit";
     case "app":
@@ -956,20 +950,7 @@ export default function PlaygroundPage() {
         },
         onRequestMenu: () => openMenuRef.current("profile"),
         onInteract: (item) => {
-          if (item.kind === "person") {
-            setChatting(true);
-            return;
-          }
-          if (item.kind === "guide") {
-            openGuideRef.current();
-            return;
-          }
-          if (item.kind === "mascot") {
-            openNeighborRef.current(item.mascotId);
-            return;
-          }
-          // Seats never reach here — the World handles its own local
-          // affordances, so beyond conversations this page only opens Software.
+          // Conversations only use Talk/Enter; this callback opens exhibits.
           if (item.kind !== "app" && item.kind !== "activity") return;
           const card =
             item.kind === "app"
