@@ -1405,7 +1405,7 @@ export default function PlaygroundPage() {
 
 
       {exploreHint ? <div className="pg-explore-hint" role="status">
-        <span>WASD / arrows to move · Mouse to look · Space to jump · Esc to release the mouse</span>
+        <span>WASD to move · {lookMode === "drag" ? "Drag to look" : "Mouse to look"} · Space to jump · {lookMode === "drag" ? "Esc to leave explore mode" : "Esc to release the mouse"}</span>
         <button type="button" aria-label="Dismiss movement instructions" onClick={() => setExploreHint(false)}>✕</button>
       </div> : null}
 
