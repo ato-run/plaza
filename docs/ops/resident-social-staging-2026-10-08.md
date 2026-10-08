@@ -16,3 +16,7 @@ Changing NPCs resets the dialog and ends the previous NPC conversation using its
 - Main change is PR #16; production not deployed by this task.
 
 Staging Discover was updated to schema `csch_discover_5412eecfad8b67c8d71b84d8`. The real staging iframe rendered the scene and loaded `/__ato/assets/sha256:b45d4e5d30cf942097e729ab028dc3dcfa19694f160ba3e645286bf62ce241ed/assets/index-BYeaPt1t.js`. Interactive staging verification was limited by the browser tool rejecting frame clicks; the interaction acceptance above is local real-browser evidence, not a staging/model claim.
+
+## Jump/Crouch icons follow-up
+
+Both touch controls use 26px decorative SVG figures instead of visible text. Accessible names, pressed state and existing touch-down handling are retained. TypeScript/production builds passed. Staging preserves compact controls and publishes commit `4a090923861ab686cbba95c1e959d6d5ef7cbfd3` as `caprev_plaza_0027` / `swm_plaza_aHUvmTufyuGkyXEx`, manifest `sha256:c0fbe9a516f93ff03d02ded19501b7374c5321f87cd5d07404e69a1c049a4af2`. All 56 objects and the manifest passed R2 readback verification.
