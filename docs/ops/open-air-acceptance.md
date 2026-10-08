@@ -65,15 +65,21 @@ Scope: all 60 review items, preserving avatars and the WebGL renderer. No claim 
 | 57  | Empty display sign opens Talk for sharing a public app link                                           | scene, world; V                                      |
 | 58  | Public links resolve to real catalogue cards; Try opens app, original plaza remains                   | sharedLink, API lobby/cards, GuideDialog; A/V        |
 | 59  | Talk-about-app drafts a public link; shared Activity displays use existing Join route                 | PlaygroundPage, world; V multi-client                |
-| 60  | Three-client ordering, first-winner ownership, timestamp replay, pose guards and forged-state refusal | API app-room test; local A complete, staging pending |
+| 60  | Three-client ordering, first-winner ownership, timestamp replay, pose guards and forged-state refusal | API app-room test; local and staging A complete; three scripted clients |
 
-## Completed local checks
+## Verification and staging rollout — 2026-10-09
 
-- Plaza: TypeScript, production build, 222 tests in 25 files passed before final merge integration.
-- API: TypeScript, App Room/controller/state-sync/NPC tests: 79 in four files passed before final context hardening.
-- These counts are provisional until the final regenerated adapter and main integration have been checked.
-- Three-client tests use real local workerd WebSockets, D1 and R2, not a mocked transport. They are not a staging or human usability test.
-- Browser showed a clear entrance, visible pool arch/pier landmark, supported fountain jump and shared-clock controls. Full place traversal and touch gestures remain to verify.
+- Plaza source: `826f970d41a1d191d0bcc90a946410b2ca92b5c1`, PR https://github.com/ato-run/plaza/pull/17.
+- API deployed source: `5992572c`, PR https://github.com/ato-run/ato-api/pull/761. Worker `34a2c0c6-9bee-4355-90a6-011e3eb6c9c8`; health 200, 43 existing secrets preserved.
+- Plaza publication: `caprev_plaza_0030`, materialization `swm_plaza_NuKrfBHCxFQqKAoo`; all 56 R2 objects verified against real bytes. Discover catalogue updated.
+- Plaza: 222 tests in 25 files passed; final TypeScript and production build passed after main integration and final scene fixes.
+- API: TypeScript passed on the final generated adapter; 79 related tests plus 73 boundary tests passed; final regenerated adapter App Room/NPC checks: 55 passed. Counts overlap and must not be summed.
+- Live staging acceptance run `64a915fd30bc`: three independently authenticated scripted HTTP/WebSocket clients agreed on durable event order, original timestamps and one pickup winner. History replay, retry after moving, cross-actor ID rejection, forged checkpoint replacement, exclusive seats and actual resident reaction memory all passed. Test sessions revoked.
+- Actual Workers AI NPC call returned HTTP 200, mode `llm`, and did not invent available exhibition apps.
+- Browser: deployed Discover entry loaded; direct deployed instance supported keyboard walking to the lookout vicinity and menu pause/settings. Pool arch and pier were visible. Local production preview also verified fountain support and walking steps; a 390×844 layout was checked.
+- Proof images in this checkout: `.tmp/open-air-staging.png`, `.tmp/open-air-mobile.png`. API live evidence is committed in its `docs/ops/plaza-open-air-live.json`.
+- Remaining acceptance limits: no three-human session, physical phone multi-touch, sustained device FPS/memory profiling or listening evaluation of generated spatial audio. Visual behavior marked V above is implementation coverage, not a claim that every scenario was manually exercised.
+- No migration, binding or feature flag changed; production remains untouched. PRs remain draft while the remaining device/usability acceptance is reviewed.
 
 ## Rollout contract
 
