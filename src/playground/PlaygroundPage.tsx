@@ -1,3 +1,4 @@
+import { isConversationTarget } from "./world/interaction";
 import { conversationNpc } from "./conversationTarget";
 import { CoopControls } from "./coop/CoopControls";
 /**
@@ -1383,7 +1384,7 @@ export default function PlaygroundPage() {
         </div>
       ) : null}
 
-      {target && target.kind !== "person" && target.kind !== "mascot" && target.kind !== "guide" && !chatting && !guideOpen && !menuOpen ? (
+      {target && !isConversationTarget(target) && !chatting && !guideOpen && !menuOpen ? (
         <div className="pg-interaction">
           <span className="pg-interaction-kind">{targetKindLabel(target)}</span>
           <strong>{targetTitle(target)}</strong>
