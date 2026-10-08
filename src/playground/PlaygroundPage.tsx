@@ -274,7 +274,6 @@ export default function PlaygroundPage() {
     null,
   );
   const [settings, setSettings] = useState<ExploreSettings>(readSettings);
-  const [reactionsOpen, setReactionsOpen] = useState(false);
   const sendOpenAirRef = useRef<(action: OpenAirAction) => void>(() => {});
   const syncOpenAir = useCallback(() => {
     worldRef.current?.setOpenAir(
