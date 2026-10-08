@@ -1015,3 +1015,27 @@ kbd {
 .pg-speech--guide {
   border: 1px solid #b9d3c8;
 }
+
+.pg-guide-thinking {
+  color: #587065;
+  font-style: italic;
+}
+
+.pg-guide-thinking span {
+  display: inline-block;
+  animation: pg-guide-dots 1.2s steps(4, end) infinite;
+  overflow: hidden;
+  vertical-align: bottom;
+  width: 1.2em;
+}
+
+@keyframes pg-guide-dots {
+  from { width: 0; }
+  to { width: 1.2em; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-guide-thinking span {
+    animation: none;
+  }
+}

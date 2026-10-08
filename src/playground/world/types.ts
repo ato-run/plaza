@@ -236,6 +236,8 @@ export interface WorldRuntime {
   update?: (dt: number, now: number, eye?: THREE.Vector3) => void;
   /** The World's guide, if it has one: the page speaks through her. */
   guide?: { say(text: string, durationMs?: number): void };
+  /** The World's residents: keep one in place while the viewer talks to them. */
+  neighbors?: { hold(id: string, on: boolean): void };
   dispose(): void;
 }
 

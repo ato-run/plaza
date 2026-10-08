@@ -44,8 +44,54 @@ await copyFile(
   ".tmp/adapter-types/coop/adapter.d.ts",
   resolve(out, "plaza.generated.d.ts"),
 );
+// The guide module (rule-based conversation + model knowledge), shared with
+// the API's NPC conversation service.
+const guideResult = await build({
+  entryPoints: ["src/playground/guide/index.ts"],
+  metafile: true,
+  bundle: true,
+  format: "esm",
+  platform: "neutral",
+  target: "es2022",
+  outfile: resolve(out, "plaza-guide.generated.js"),
+  banner: {
+    js: "// Generated from ato-run/plaza by scripts/build-coop-adapter.mjs. Apache-2.0.",
+  },
+});
+execFileSync(
+  process.execPath,
+  [
+    "node_modules/typescript/bin/tsc",
+    "--declaration",
+    "--emitDeclarationOnly",
+    "--skipLibCheck",
+    "--target",
+    "es2022",
+    "--moduleResolution",
+    "bundler",
+    "--module",
+    "esnext",
+    "--outDir",
+    ".tmp/guide-types",
+    "src/playground/guide/index.ts",
+  ],
+  { stdio: "inherit" },
+);
+// One self-contained declaration file for the API.
+const guideTypes = [];
+for (const name of ["nagi", "residents", "knowledge"]) {
+  guideTypes.push(
+    (await readFile(`.tmp/guide-types/${name}.d.ts`, "utf8"))
+      .replace(/^import .*$/gm, "")
+      .replace(/^export \* from .*$/gm, ""),
+  );
+}
+await writeFile(resolve(out, "plaza-guide.generated.d.ts"), guideTypes.join("\n"));
+
 const sources = {};
-for (const path of Object.keys(result.metafile.inputs).sort()) {
+for (const path of [
+  ...new Set([...Object.keys(result.metafile.inputs), ...Object.keys(guideResult.metafile.inputs)]),
+].sort()) {
   sources[path] = createHash("sha256")
     .update(await readFile(path))
     .digest("hex");
@@ -59,6 +105,10 @@ await writeFile(
       sources,
       artifact_sha256: createHash("sha256")
         .update(await readFile(resolve(out, "plaza.generated.js")))
+        .digest("hex"),
+      guide: "plaza.guide@1",
+      guide_artifact_sha256: createHash("sha256")
+        .update(await readFile(resolve(out, "plaza-guide.generated.js")))
         .digest("hex"),
     },
     null,

@@ -173,6 +173,11 @@ export interface Residents {
   labels: { element: HTMLElement; position: THREE.Vector3 }[];
   /** `others` are characters residents must keep clear of (Nagi). */
   update(eye: THREE.Vector3 | undefined, reducedMotion: boolean, others?: readonly { x: number; z: number }[]): void;
+  /**
+   * Keep a resident where they are, facing you, while you talk to them —
+   * for this viewer only; then they walk back into their day.
+   */
+  hold(id: string, on: boolean): void;
   dispose(): void;
 }
 
@@ -187,13 +192,21 @@ interface Live {
   collider: CircleCollider;
   yaw: number;
   headYaw: number;
-  talkIndex: number;
   /** Local overrides, in ms of Date.now(). */
   saying: { text: string; until: number } | null;
   facePlayerUntil: number;
   greetedAt: number;
   placed: boolean;
+  /** Where they stood when the last frame was drawn. */
+  last: { x: number; z: number; pose: "stand" | "sit" };
+  /** Talking with this viewer: stays put. */
+  held: { x: number; z: number; pose: "stand" | "sit" } | null;
+  /** Just let go: blends from here back onto the schedule. */
+  rejoin: { x: number; z: number; from: number } | null;
 }
+
+/** How long a resident takes to walk back into their day after a talk. */
+const REJOIN_MS = 2200;
 
 /** The schedule's clock: wall time, so every visitor sees the same plaza. */
 const clock = () => Date.now() / 1000;
@@ -235,26 +248,23 @@ export function createResidents(
       collider: circle(0, 0, 0.35),
       yaw: 0,
       headYaw: 0,
-      talkIndex: 0,
       saying: null,
       facePlayerUntil: 0,
       greetedAt: -Infinity,
       placed: false,
+      last: { x: 0, z: 0, pose: "stand" },
+      held: null,
+      rejoin: null,
     };
   });
 
+  // Talking to a resident is the page's business (a conversation), so these
+  // carry no local `activate`.
   const interactables: Interactable[] = live.map((resident) => ({
     kind: "mascot",
     id: resident.spec.id,
     title: resident.spec.name,
     anchor: resident.anchor,
-    activate: () => {
-      const lines = LINES[resident.spec.personality].talk;
-      const now = Date.now();
-      resident.saying = { text: lines[resident.talkIndex % lines.length], until: now + 6000 };
-      resident.talkIndex += 1;
-      resident.facePlayerUntil = now + 7000;
-    },
   }));
 
   const turn = (from: number, to: number, rate: number) => {
@@ -270,11 +280,34 @@ export function createResidents(
     update(eye, reducedMotion, others = []) {
       const seconds = clock();
       const nowMs = seconds * 1000;
-      const states = live.map((_, index) => ({ ...schedule.stateAt(index, seconds) }));
+      const states = live.map((resident, index) => {
+        const state = { ...schedule.stateAt(index, seconds) };
+        if (resident.held) {
+          state.x = resident.held.x;
+          state.z = resident.held.z;
+          state.pose = resident.held.pose;
+          state.moving = false;
+        } else if (resident.rejoin) {
+          const k = (nowMs - resident.rejoin.from) / REJOIN_MS;
+          if (k >= 1) {
+            resident.rejoin = null;
+          } else {
+            const ease = k * k * (3 - 2 * k);
+            state.x = resident.rejoin.x + (state.x - resident.rejoin.x) * ease;
+            state.z = resident.rejoin.z + (state.z - resident.rejoin.z) * ease;
+            state.pose = "stand";
+            state.moving = true;
+          }
+        }
+        return state;
+      });
       // Keep bodies apart: residents passing each other step aside, nobody
       // stands inside Nagi. Seated residents and Nagi do not move.
       const points = [...states.map((state) => ({ x: state.x, z: state.z })), ...others.map((o) => ({ ...o }))];
-      separate(points, [...states.map((state) => state.pose === "sit"), ...others.map(() => true)]);
+      separate(points, [
+        ...states.map((state, index) => state.pose === "sit" || live[index].held !== null),
+        ...others.map(() => true),
+      ]);
       states.forEach((state, index) => {
         state.x = points[index].x;
         state.z = points[index].z;
@@ -307,7 +340,11 @@ export function createResidents(
           if (partner < 0) partner = null;
         }
         // Greet the visitor who walks up, once in a while.
-        if (eye && toPlayer < 3.2 && nowMs - resident.greetedAt > 45000 && !resident.saying) {
+        if (resident.held) {
+          resident.facePlayerUntil = nowMs + 1500;
+          resident.saying = null;
+        }
+        if (eye && !resident.held && toPlayer < 3.2 && nowMs - resident.greetedAt > 45000 && !resident.saying) {
           const greet = LINES[resident.spec.personality].greet;
           resident.greetedAt = nowMs;
           resident.saying = { text: greet[Math.floor(hash01(index, Math.floor(seconds)) * greet.length)], until: nowMs + 3800 };
@@ -317,7 +354,8 @@ export function createResidents(
 
         // ---- what they say (local override > conversation > musing) ----
         let line: string | null = resident.saying?.text ?? null;
-        const nearby = ambientAllowed.has(index);
+        // In a conversation the dialog speaks for them, not a bubble.
+        const nearby = ambientAllowed.has(index) && !resident.held;
         if (!line && nearby && partner !== null && state.stayed > 1.5) {
           const turnIndex = Math.floor(seconds / 4.5);
           const speaker = turnIndex % 2 === 0 ? Math.min(index, partner) : Math.max(index, partner);
@@ -379,6 +417,7 @@ export function createResidents(
           else resident.head.rotation.x = 0;
         }
         resident.group.position.set(state.x, y, state.z);
+        resident.last = { x: state.x, z: state.z, pose: state.pose };
         resident.anchor.set(state.x, y + NECK + HEAD, state.z);
         resident.labelPosition.set(state.x, y + 1.25, state.z);
 
@@ -388,6 +427,19 @@ export function createResidents(
         resident.collider.r =
           state.pose === "sit" || (eye && toPlayer < 0.62) ? 0 : 0.35;
       });
+    },
+
+    hold(id, on) {
+      const resident = live.find((entry) => entry.spec.id === id);
+      if (!resident) return;
+      if (on) {
+        resident.rejoin = null;
+        resident.held = { ...resident.last };
+        return;
+      }
+      if (!resident.held) return;
+      resident.rejoin = { x: resident.held.x, z: resident.held.z, from: Date.now() };
+      resident.held = null;
     },
 
     dispose() {

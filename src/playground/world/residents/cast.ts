@@ -1,27 +1,19 @@
 /**
  * The ten residents of Central Plaza, and the places they spend their day.
  *
- * Personalities in the villager tradition — lazy, peppy, cranky, smug,
- * sisterly, jock, normal, snooty — decide how they talk; `homes` decides
- * where they like to be (the cranky one keeps to the edges, the peppy one
- * goes everywhere).
+ * Who they are and how they talk lives in guide/residents (the API reads it
+ * too); here is how they look and where they like to be (the cranky one
+ * keeps to the edges, the peppy one goes everywhere).
  */
 import { CENTRAL_BENCHES } from "../worlds/centralGeometry";
 import { shoreZ } from "../beach/coast";
 import type { Spot } from "./schedule";
+import { RESIDENT_PROFILES, type ResidentId, type ResidentProfile } from "../../guide/residents";
 
-export type Species =
-  | "cat" | "dog" | "panda" | "fox" | "penguin"
-  | "rabbit" | "bear" | "koala" | "frog" | "owl";
+export type { Lines, Personality, Species } from "../../guide/residents";
+export { CHATTER, LINES } from "../../guide/residents";
 
-export type Personality =
-  | "lazy" | "peppy" | "cranky" | "smug" | "sisterly" | "jock" | "normal" | "snooty";
-
-export interface ResidentSpec {
-  id: string;
-  name: string;
-  species: Species;
-  personality: Personality;
+export interface ResidentSpec extends ResidentProfile {
   shirt: string;
   /** Spot groups this resident visits; undefined = anywhere. */
   likes?: readonly SpotKind[];
@@ -91,78 +83,21 @@ export function plazaSpots(): { spot: Spot; kind: SpotKind }[] {
   return out;
 }
 
-export const RESIDENTS: readonly ResidentSpec[] = [
-  { id: "cat", name: "Calico", species: "cat", personality: "lazy", shirt: "#e7c26a", likes: ["bench", "shade", "garden", "fountain"] },
-  { id: "dog", name: "Sora", species: "dog", personality: "jock", shirt: "#d5534b" },
-  { id: "panda", name: "Momo", species: "panda", personality: "normal", shirt: "#8fc0a9" },
-  { id: "fox", name: "Rusty", species: "fox", personality: "smug", shirt: "#3f5f8f", likes: ["exhibit", "fountain", "chat", "bench"] },
-  { id: "penguin", name: "Pip", species: "penguin", personality: "peppy", shirt: "#f29bb2" },
-  { id: "rabbit", name: "Clover", species: "rabbit", personality: "sisterly", shirt: "#7b6bb3" },
-  { id: "bear", name: "Bruno", species: "bear", personality: "cranky", shirt: "#5d6b4a", likes: ["shade", "shore", "bench"] },
-  { id: "koala", name: "Kiki", species: "koala", personality: "snooty", shirt: "#c7a3d8", likes: ["garden", "fountain", "exhibit", "chat"] },
-  { id: "frog", name: "Lily", species: "frog", personality: "peppy", shirt: "#f5d04f", likes: ["fountain", "shore", "chat", "garden"] },
-  { id: "owl", name: "Olive", species: "owl", personality: "normal", shirt: "#e48f4f", likes: ["bench", "exhibit", "shade", "chat"] },
-];
-
-export interface Lines {
-  greet: readonly string[];
-  talk: readonly string[];
-  muse: readonly string[];
-}
-
-export const LINES: Record<Personality, Lines> = {
-  lazy: {
-    greet: ["Oh, hey... you came by.", "Mmm, hi there."],
-    talk: ["The sun's just right for a nap.", "I found a bench that's exactly the right temperature.", "Ever notice how the waves sound like snoring?"],
-    muse: ["Zzz... huh? I'm awake.", "Snack time soon, I hope."],
-  },
-  peppy: {
-    greet: ["Hiya! Oh, I'm so glad you're here!", "Hey hey! Look who it is!"],
-    talk: ["Did you see the fountain sparkle? So pretty!", "Let's all go to the beach later, okay?", "Try jumping onto the fountain rim! It's the best!"],
-    muse: ["La la la~", "Ooh, a shell!"],
-  },
-  cranky: {
-    greet: ["Hmph. Oh, it's you.", "Mm. Afternoon."],
-    talk: ["Back in my day, plazas didn't have fountains.", "The young ones run around too much.", "...The sea's nice. Don't tell anyone I said that."],
-    muse: ["Hmph.", "Too many seagulls today."],
-  },
-  smug: {
-    greet: ["Ah, splendid timing.", "Well, hello there, friend."],
-    talk: ["I make a point of visiting the exhibits daily. Culture, you know.", "The sunset here is almost as refined as I am.", "Have you tried the apps on display? I have opinions."],
-    muse: ["Simply marvelous.", "Hm, this light suits me."],
-  },
-  sisterly: {
-    greet: ["Hey, you! Doing okay?", "There you are! Come on over."],
-    talk: ["If anyone gives you trouble, you tell me.", "Don't stay in the sun too long, okay?", "Nagi knows everything about this place. Ask her!"],
-    muse: ["Ugh, sand in my shoes again.", "Nice breeze today."],
-  },
-  jock: {
-    greet: ["Yo! Ready to work out?", "Hey, champ!"],
-    talk: ["Walking to the water and back counts as cardio!", "I jumped onto the fountain ten times this morning!", "Wading in the shallows is great for the legs!"],
-    muse: ["Hup! Hup!", "Feel the burn!"],
-  },
-  normal: {
-    greet: ["Oh, hello! Lovely day, isn't it?", "Hi there! Nice to see you."],
-    talk: ["I like watching people meet up here.", "The planters smell lovely this time of day.", "Have you tried the sunset? Open the Menu and pick it."],
-    muse: ["What a peaceful day.", "I should water the plants."],
-  },
-  snooty: {
-    greet: ["Oh. Hello, darling.", "Ah, a visitor. How quaint."],
-    talk: ["The anthuriums here are acceptable, I suppose.", "One must dress for the beach, darling.", "I only stand where the light is flattering."],
-    muse: ["Hmm, simply divine.", "Where is my sun hat..."],
-  },
+/** How each resident looks and where they like to be; who they are is in guide/residents. */
+const STYLE: Record<ResidentId, Pick<ResidentSpec, "shirt" | "likes">> = {
+  cat: { shirt: "#e7c26a", likes: ["bench", "shade", "garden", "fountain"] },
+  dog: { shirt: "#d5534b" },
+  panda: { shirt: "#8fc0a9" },
+  fox: { shirt: "#3f5f8f", likes: ["exhibit", "fountain", "chat", "bench"] },
+  penguin: { shirt: "#f29bb2" },
+  rabbit: { shirt: "#7b6bb3" },
+  bear: { shirt: "#5d6b4a", likes: ["shade", "shore", "bench"] },
+  koala: { shirt: "#c7a3d8", likes: ["garden", "fountain", "exhibit", "chat"] },
+  frog: { shirt: "#f5d04f", likes: ["fountain", "shore", "chat", "garden"] },
+  owl: { shirt: "#e48f4f", likes: ["bench", "exhibit", "shade", "chat"] },
 };
 
-/** What two residents say to each other, alternating. */
-export const CHATTER: readonly string[] = [
-  "Did you see the new app at the exhibits?",
-  "The waves are big today!",
-  "I love this time of day.",
-  "Want to go to the beach later?",
-  "Nagi said someone new arrived!",
-  "I tried jumping onto the fountain again.",
-  "The planters look great, don't they?",
-  "Have you been to the water's edge?",
-  "Let's sit on the bench for a bit.",
-  "I heard the sunset is amazing here.",
-];
+export const RESIDENTS: readonly ResidentSpec[] = RESIDENT_PROFILES.map((profile) => ({
+  ...profile,
+  ...STYLE[profile.id],
+}));
