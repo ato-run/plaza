@@ -215,13 +215,13 @@ export function GuideDialog({ open, npc, context, start, onAction, onClose, useM
         <input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder={npc.id === "nagi" ? "Ask anything (e.g. What can I do here?)" : `Say something to ${npc.name}…`}
+          placeholder={npc.id === "nagi" ? "Ask anything (e.g. What can I do here?)" : `Talk to ${npc.name}…`}
           aria-label={`Say something to ${npc.name}`}
           maxLength={400}
           disabled={thinking}
         />
         <button type="submit" disabled={!draft.trim() || thinking}>
-          {npc.id === "nagi" ? "Ask" : "Say"}
+          Send
         </button>
       </form>
     </div>

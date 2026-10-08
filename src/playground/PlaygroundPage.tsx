@@ -1,3 +1,4 @@
+import { conversationNpc } from "./conversationTarget";
 import { CoopControls } from "./coop/CoopControls";
 /**
  * Playground — one global Lobby (`global-v1`), as a first-person world.
@@ -188,6 +189,8 @@ export default function PlaygroundPage() {
   const [state, setState] = useState<PlaygroundState>(createPlaygroundState);
   const [presence, setPresence] = useState<PresenceState>(createPresenceState);
   const [target, setTarget] = useState<WorldTarget | null>(null);
+  const targetRef = useRef(target);
+  targetRef.current = target;
   const [locked, setLocked] = useState(false);
   const [lookMode, setLookMode] = useState<"lock" | "drag">("lock");
   // How the place is lit for THIS viewer; remembered locally, never sent.
@@ -944,7 +947,12 @@ export default function PlaygroundPage() {
               5000,
           );
         },
-        onRequestChat: () => setChatting(true),
+        onRequestChat: () => {
+          const npc = conversationNpc(targetRef.current);
+          if (npc === "nagi") openGuideRef.current();
+          else if (npc) openNeighborRef.current(npc);
+          else setChatting(true);
+        },
         onRequestMenu: () => openMenuRef.current("profile"),
         onInteract: (item) => {
           if (item.kind === "person") {
@@ -1441,8 +1449,8 @@ export default function PlaygroundPage() {
               <button
                 key={emoji}
                 type="button"
-                title={`${index + 1} · React to the person you're facing`}
-                disabled={!canPost}
+                title={`${index + 1} · React to whoever you're facing`}
+                disabled={!canPost && target?.kind !== "mascot" && target?.kind !== "guide"}
                 onClick={() => worldRef.current?.reactAtTarget(emoji)}
               >
                 <span aria-hidden="true">{emoji}</span>
@@ -1450,11 +1458,16 @@ export default function PlaygroundPage() {
               </button>
             ))}
           </div>
-          {canPost ? (
+          {canPost || target?.kind === "mascot" || target?.kind === "guide" ? (
             <button
               type="button"
               className="pg-chat-open"
-              onClick={() => setChatting(true)}
+              onClick={() => {
+                const npc = conversationNpc(target);
+                if (npc === "nagi") openGuide();
+                else if (npc) openNeighbor(npc);
+                else setChatting(true);
+              }}
             >
               Talk<kbd>↵</kbd>
             </button>

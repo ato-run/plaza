@@ -16,10 +16,8 @@ import type { Interactable } from "./types";
 /**
  * A resolved target.
  *
- * `person` and `mascot` look identical through a crosshair and are deliberately
- * distinct here: one is somebody who will see your 👋 arrive, the other is
- * scenery that says a canned line. Collapsing them would let a wave be sent to
- * nobody, with the sender believing it landed.
+ * People use the shared room lane; residents use private NPC conversations
+ * and local reaction acknowledgements. Both share the same targeting controls.
  */
 export type WorldTarget =
   | { kind: "person"; principalId: string; name: string }
