@@ -26,3 +26,9 @@ Both touch controls use 26px decorative SVG figures instead of visible text. Acc
 Conversation targets (people, residents and Nagi) no longer show the floating Talk E interaction prompt. Enter and the bottom Talk control open their existing conversation path. Seats/exhibits retain their interaction prompt. The control menu explicitly lists people, residents and Nagi under Enter. TypeScript/production builds passed.
 
 Staging integration commit `729a0c0da2784b93b8ce8bfb1486636ec8f54e79` published as `caprev_plaza_0028` / `swm_plaza_GGWZzVcRouQpvB9c`, manifest `sha256:70d6dc5846ec0b3cfc6ea4032da0a2616be679aa3dbf2a9821f282ead9ae6ab6`. Existing verified immutable blobs were reused; all 56 objects and manifest were fetched from R2 and digest-verified again before publication.
+
+## Retire E for conversations
+
+The object interaction handler now rejects person/resident/guide targets, retiring E-based conversations as well as their prompt. Enter and the bottom Talk control retain their conversation routing; E remains for seats/exhibits. Three focused regression tests and TypeScript/production build passed. Real local browser: Enter opened Calico, E after closing did not open a conversation, and Enter opened Calico again.
+
+Staging commit `85397b871ca3af62a1e9896f5d909ed122129aba` published as `caprev_plaza_0029` / `swm_plaza_JZQbz_f3ufVWoEjI`; manifest `sha256:a9b9bae9f2cea855c13277589959f000f8f30e6e456a3ee4161a680c052f98a4`. All 56 objects and manifest passed R2 readback verification.
