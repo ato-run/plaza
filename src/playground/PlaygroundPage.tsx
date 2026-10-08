@@ -1375,7 +1375,9 @@ export default function PlaygroundPage() {
         start={guideStart ?? guideReply("greeting", guideContext())}
         onAction={runGuideAction}
         onClose={() => setGuideOpen(false)}
-        useModel={!!state.viewer && !state.viewer.is_guest}
+        // The server decides who gets the model (an ato session, even in a
+        // shared Public instance where the room calls everyone a guest).
+        useModel
       />
 
       {guideNote && !guideOpen ? (

@@ -24,9 +24,9 @@ interface GuideDialogProps {
   onAction(action: GuideAction): void;
   onClose(): void;
   /**
-   * Answer free text with the guide conversation API (signed-in visitors on
-   * a real Instance). Otherwise, and whenever the API fails, the rule-based
-   * guide answers on the page.
+   * Answer free text with the guide conversation API, which uses the model
+   * for signed-in visitors and the rule-based guide for everyone else; when
+   * the API is unreachable (local dev), the page answers by rule itself.
    */
   useModel: boolean;
 }
