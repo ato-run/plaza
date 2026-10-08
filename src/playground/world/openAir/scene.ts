@@ -165,9 +165,10 @@ export function createOpenAir(
   signPost(
     builder,
     "Dune lookout\nPools ↗   Pier →",
-    top.x,
-    top.top + 1.2,
-    top.z - 1.6,
+    top.x + 1.2,
+    top.top + 0.8,
+    top.z + 2,
+    1.4,
   );
   for (const rock of HOP_ROCKS) {
     const m = builder.blob(

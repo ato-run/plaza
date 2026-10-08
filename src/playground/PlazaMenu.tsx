@@ -64,7 +64,7 @@ interface PlazaMenuProps {
 
 const CONTROLS: readonly (readonly [string, string])[] = [
   ["W A S D", "Move"],
-  ["Space", "Jump — onto the fountain, too"],
+  ["Space", "Jump / climb low ledges"],
   ["C / Ctrl", "Crouch"],
   ["E", "Pick up objects, watch wildlife, use seats or exhibits"],
   ["Enter", "Talk to people, residents or Nagi"],
@@ -240,44 +240,47 @@ export function PlazaMenu(props: PlazaMenuProps) {
               </button>
             ))}
           </div>
-          <ul className="pg-menu-worlds">
-            {props.worlds
-              .filter((definition) => definition.available)
-              .map((definition) => {
-                const count = props.worldOnline[definition.id];
-                const here = definition.id === props.worldId;
-                return (
-                  <li key={definition.id}>
-                    <button
-                      type="button"
-                      className={`pg-selector-item${here ? " pg-selector-item--here" : ""}`}
-                      disabled={!definition.available || here}
-                      onClick={() => props.onEnterWorld(definition.id)}
-                    >
-                      <span className="pg-selector-index">
-                        {String(definition.index).padStart(2, "0")}
-                      </span>
-                      <span className="pg-selector-body">
-                        <strong>{definition.name}</strong>
-                        <small>{definition.tagline}</small>
-                      </span>
-                      <span className="pg-selector-count">
-                        {!definition.available
-                          ? "Coming soon"
-                          : here
-                            ? `You are here · ${props.online} online`
-                            : /* An absent count is not zero: a server without
+          {props.worlds.filter((definition) => definition.available).length >
+          1 ? (
+            <ul className="pg-menu-worlds">
+              {props.worlds
+                .filter((definition) => definition.available)
+                .map((definition) => {
+                  const count = props.worldOnline[definition.id];
+                  const here = definition.id === props.worldId;
+                  return (
+                    <li key={definition.id}>
+                      <button
+                        type="button"
+                        className={`pg-selector-item${here ? " pg-selector-item--here" : ""}`}
+                        disabled={!definition.available || here}
+                        onClick={() => props.onEnterWorld(definition.id)}
+                      >
+                        <span className="pg-selector-index">
+                          {String(definition.index).padStart(2, "0")}
+                        </span>
+                        <span className="pg-selector-body">
+                          <strong>{definition.name}</strong>
+                          <small>{definition.tagline}</small>
+                        </span>
+                        <span className="pg-selector-count">
+                          {!definition.available
+                            ? "Coming soon"
+                            : here
+                              ? `You are here · ${props.online} online`
+                              : /* An absent count is not zero: a server without
                                per-World counts would otherwise report every
                                World as empty. */
-                              typeof count === "number"
-                              ? `${count} here`
-                              : "—"}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-          </ul>
+                                typeof count === "number"
+                                ? `${count} here`
+                                : "—"}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+            </ul>
+          ) : null}
         </section>
 
         <section data-section="controls">
