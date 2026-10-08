@@ -1,3 +1,5 @@
+import { OPEN_AIR_PLACES } from "./world/openAir/layout";
+import type { ExploreSettings } from "./world/openAir/settings";
 /**
  * The one place that explains and changes how you are in the Plaza: who you
  * appear as, the light you see, which World you are in, and the controls.
@@ -11,8 +13,24 @@ import type { WorldDefinition, WorldId } from "./world/types";
 
 /** The room's animals — the same list the room validates a choice against. */
 export const ROOM_ANIMALS = [
-  "🦊", "🦦", "🦉", "🐼", "🐧", "🐇", "🐢", "🐬", "🐈",
-  "🦝", "🦫", "🐨", "🦭", "🐻", "🦌", "🦔", "🐿️", "🐋",
+  "🦊",
+  "🦦",
+  "🦉",
+  "🐼",
+  "🐧",
+  "🐇",
+  "🐢",
+  "🐬",
+  "🐈",
+  "🦝",
+  "🦫",
+  "🐨",
+  "🦭",
+  "🐻",
+  "🦌",
+  "🦔",
+  "🐿️",
+  "🐋",
 ] as const;
 
 /** Longest name the room accepts, in characters. */
@@ -39,15 +57,19 @@ interface PlazaMenuProps {
   timeOfDay: string | null;
   onTimeOfDay(id: string | null): void;
   lookMode: "lock" | "drag";
+  settings?: ExploreSettings;
+  onSettings?(settings: ExploreSettings): void;
+  onPlace?(id: string): void;
 }
 
 const CONTROLS: readonly (readonly [string, string])[] = [
   ["W A S D", "Move"],
-  ["Space", "Jump — onto the fountain, too"],
+  ["Space", "Jump / climb low ledges"],
   ["C / Ctrl", "Crouch"],
-  ["E", "Interact with seats and exhibits"],
+  ["E", "Pick up objects, watch wildlife, use seats or exhibits"],
   ["Enter", "Talk to people, residents or Nagi"],
   ["1 – 4", "React to whoever you are facing"],
+  ["Q / F", "Place / throw the object you are holding"],
   ["M", "Open this menu"],
 ];
 
@@ -79,7 +101,8 @@ export function PlazaMenu(props: PlazaMenuProps) {
   const trimmed = name.replace(/\s+/g, " ").trim();
   const nameLength = [...trimmed].length;
   const changed =
-    !!identity && (trimmed !== identity.displayName || animal !== identity.animalEmoji);
+    !!identity &&
+    (trimmed !== identity.displayName || animal !== identity.animalEmoji);
   const valid = nameLength >= 1 && nameLength <= MAX_NAME_CHARS;
   const lookKeys = props.lookMode === "drag" ? "Drag" : "Mouse";
 
@@ -106,7 +129,12 @@ export function PlazaMenu(props: PlazaMenuProps) {
       >
         <header className="pg-menu-head">
           <h2>Menu</h2>
-          <button type="button" className="pg-menu-close" onClick={props.onClose} aria-label="Close">
+          <button
+            type="button"
+            className="pg-menu-close"
+            onClick={props.onClose}
+            aria-label="Close"
+          >
             ✕
           </button>
         </header>
@@ -161,76 +189,164 @@ export function PlazaMenu(props: PlazaMenuProps) {
               Save
             </button>
             {!props.canEditIdentity ? (
-              <p className="pg-menu-note">Your name can be changed once you are connected.</p>
+              <p className="pg-menu-note">
+                Your name can be changed once you are connected.
+              </p>
             ) : null}
           </form>
         </section>
 
         {times ? (
           <section data-section="time">
-            <h3>Time of day</h3>
+            <h3>Lighting</h3>
             <div className="pg-time" role="group" aria-label="Time of day">
-              {times.map((entry, index) => {
-                const active = (props.timeOfDay ?? times[0]?.id) === entry.id;
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={props.timeOfDay === null}
+                className={props.timeOfDay === null ? "pg-time-on" : undefined}
+                onClick={() => props.onTimeOfDay(null)}
+              >
+                Shared clock
+              </button>
+              {times.map((entry) => {
+                const active = props.timeOfDay === entry.id;
                 return (
                   <button
                     key={entry.id}
                     type="button"
                     aria-pressed={active}
                     className={active ? "pg-time-on" : undefined}
-                    onClick={() => props.onTimeOfDay(index === 0 ? null : entry.id)}
+                    onClick={() => props.onTimeOfDay(entry.id)}
                   >
                     {entry.label}
                   </button>
                 );
               })}
             </div>
-            <p className="pg-menu-note">Only you see this; everyone picks their own.</p>
+            <p className="pg-menu-note">
+              Lighting overrides affect only your view. Tide, weather and
+              neighbors follow the shared clock.
+            </p>
           </section>
         ) : null}
 
         <section data-section="world">
-          <h3>Worlds</h3>
-          <ul className="pg-menu-worlds">
-            {props.worlds.map((definition) => {
-              const count = props.worldOnline[definition.id];
-              const here = definition.id === props.worldId;
-              return (
-                <li key={definition.id}>
-                  <button
-                    type="button"
-                    className={`pg-selector-item${here ? " pg-selector-item--here" : ""}`}
-                    disabled={!definition.available || here}
-                    onClick={() => props.onEnterWorld(definition.id)}
-                  >
-                    <span className="pg-selector-index">
-                      {String(definition.index).padStart(2, "0")}
-                    </span>
-                    <span className="pg-selector-body">
-                      <strong>{definition.name}</strong>
-                      <small>{definition.tagline}</small>
-                    </span>
-                    <span className="pg-selector-count">
-                      {!definition.available
-                        ? "Coming soon"
-                        : here
-                          ? `You are here · ${props.online} online`
-                          : /* An absent count is not zero: a server without
+          <h3>Places</h3>
+          <div className="pg-guide-choices">
+            {OPEN_AIR_PLACES.map((place) => (
+              <button key={place.id} onClick={() => props.onPlace?.(place.id)}>
+                {place.name}
+              </button>
+            ))}
+          </div>
+          {props.worlds.filter((definition) => definition.available).length >
+          1 ? (
+            <ul className="pg-menu-worlds">
+              {props.worlds
+                .filter((definition) => definition.available)
+                .map((definition) => {
+                  const count = props.worldOnline[definition.id];
+                  const here = definition.id === props.worldId;
+                  return (
+                    <li key={definition.id}>
+                      <button
+                        type="button"
+                        className={`pg-selector-item${here ? " pg-selector-item--here" : ""}`}
+                        disabled={!definition.available || here}
+                        onClick={() => props.onEnterWorld(definition.id)}
+                      >
+                        <span className="pg-selector-index">
+                          {String(definition.index).padStart(2, "0")}
+                        </span>
+                        <span className="pg-selector-body">
+                          <strong>{definition.name}</strong>
+                          <small>{definition.tagline}</small>
+                        </span>
+                        <span className="pg-selector-count">
+                          {!definition.available
+                            ? "Coming soon"
+                            : here
+                              ? `You are here · ${props.online} online`
+                              : /* An absent count is not zero: a server without
                                per-World counts would otherwise report every
                                World as empty. */
-                            typeof count === "number"
-                            ? `${count} here`
-                            : "—"}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+                                typeof count === "number"
+                                ? `${count} here`
+                                : "—"}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+            </ul>
+          ) : null}
         </section>
 
         <section data-section="controls">
           <h3>Controls</h3>
+          {props.settings && props.onSettings ? (
+            <div className="pg-view-settings">
+              <label>
+                Look sensitivity{" "}
+                <input
+                  type="range"
+                  min="0.2"
+                  max="2"
+                  step="0.05"
+                  value={props.settings.sensitivity}
+                  onChange={(event) =>
+                    props.onSettings?.({
+                      ...props.settings!,
+                      sensitivity: Number(event.target.value),
+                    })
+                  }
+                />
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={props.settings.invertY}
+                  onChange={(event) =>
+                    props.onSettings?.({
+                      ...props.settings!,
+                      invertY: event.target.checked,
+                    })
+                  }
+                />{" "}
+                Invert vertical look
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={props.settings.motion}
+                  onChange={(event) =>
+                    props.onSettings?.({
+                      ...props.settings!,
+                      motion: event.target.checked,
+                    })
+                  }
+                />{" "}
+                Walking camera motion
+              </label>
+              <label>
+                Sound volume{" "}
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={props.settings.volume}
+                  onChange={(event) =>
+                    props.onSettings?.({
+                      ...props.settings!,
+                      volume: Number(event.target.value),
+                    })
+                  }
+                />
+              </label>
+            </div>
+          ) : null}
           <dl className="pg-controls">
             {CONTROLS.map(([keys, action]) => (
               <div key={keys}>

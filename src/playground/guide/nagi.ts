@@ -1,3 +1,4 @@
+import { OPEN_AIR_PLACES } from "../world/openAir/layout";
 /**
  * Nagi — Plaza's guide. What she says, and what each answer lets you do next.
  *
@@ -44,7 +45,15 @@ export interface GuideReply {
 }
 
 export type PracticeSkill = "move" | "look" | "jump" | "talk" | "react";
-export type PlaceId = "fountain" | "exhibits" | "shore" | "entrance";
+export type PlaceId =
+  | "fountain"
+  | "exhibits"
+  | "shore"
+  | "entrance"
+  | "lookout"
+  | "pools"
+  | "pier"
+  | "camp";
 
 export type GuideNodeId =
   | "greeting"
@@ -78,10 +87,47 @@ function capitalize(text: string): string {
 
 /** Where she can take you. Coordinates are the plaza's (see centralGeometry). */
 export const PLACES: readonly Place[] = [
-  { id: "fountain", label: "the fountain", x: 0, z: 0, radius: 4.6, description: "It's in the middle of the plaza, and you can jump up onto its rim" },
-  { id: "exhibits", label: "the app exhibits", x: 0, z: -12, radius: 3.2, description: "That's where the apps people have shared are on display" },
-  { id: "shore", label: "the water's edge", x: 0, z: -35, radius: 3, description: "You can walk down the beach and wade into the shallows" },
-  { id: "entrance", label: "the entrance", x: 0, z: 11, radius: 2.5, description: "It's where you first arrived" },
+  ...OPEN_AIR_PLACES.map((p) => ({
+    id: p.id,
+    label: p.name,
+    x: p.x,
+    z: p.z,
+    radius: p.radius,
+    description: p.description,
+  })),
+  {
+    id: "fountain",
+    label: "the fountain",
+    x: 0,
+    z: 0,
+    radius: 4.6,
+    description:
+      "It's in the middle of the plaza, and you can jump up onto its rim",
+  },
+  {
+    id: "exhibits",
+    label: "the app exhibits",
+    x: 0,
+    z: -12,
+    radius: 3.2,
+    description: "That's where the apps people have shared are on display",
+  },
+  {
+    id: "shore",
+    label: "the water's edge",
+    x: 0,
+    z: -35,
+    radius: 3,
+    description: "You can walk down the beach and wade into the shallows",
+  },
+  {
+    id: "entrance",
+    label: "the entrance",
+    x: 0,
+    z: 11,
+    radius: 2.5,
+    description: "It's where you first arrived",
+  },
 ];
 
 export const PLACE_BY_ID = new Map(PLACES.map((place) => [place.id, place]));
@@ -95,19 +141,25 @@ export const ENTRY_CHOICES: readonly GuideChoice[] = [
   { label: "Show me around", action: go("places") },
 ];
 
-const MORE_CONTROLS: GuideChoice = { label: "Other controls", action: go("controls") };
-const TO_PLACES: GuideChoice = { label: "Show me around", action: go("places") };
+const MORE_CONTROLS: GuideChoice = {
+  label: "Other controls",
+  action: go("controls"),
+};
+const TO_PLACES: GuideChoice = {
+  label: "Show me around",
+  action: go("places"),
+};
 
 export function reply(node: GuideNodeId, context: GuideContext): GuideReply {
   switch (node) {
     case "greeting":
       return {
-        text: "Welcome to Plaza. I'm Nagi, your guide. Feel free to ask me how things work or where to go.",
+        text: "Welcome! I'm Nagi. Ask me if you need a hand.",
         choices: [...ENTRY_CHOICES],
       };
     case "about":
       return {
-        text: "Plaza is one shared place where everyone gathers. You can walk around, talk to people nearby, and try the apps on display.",
+        text: `Plaza is a shared beach where you can explore, play with found objects, and meet neighbors.${context.exhibits > 0 ? " There are shared apps on display." : " There are no app displays right now; you can share an app link in Talk."}`,
         choices: [
           { label: "How do I use it?", action: go("whatCan") },
           TO_PLACES,
@@ -167,12 +219,17 @@ export function reply(node: GuideNodeId, context: GuideContext): GuideReply {
       };
     }
     case "jump": {
-      const how = context.touch ? "Tap the Jump button on the right" : "Press Space";
+      const how = context.touch
+        ? "Tap the Jump button on the right"
+        : "Press Space";
       return {
         text: `${how} to jump. It works while you walk, too, and you can land on the fountain's rim.`,
         choices: [
           { label: "Let me try", action: { kind: "practice", skill: "jump" } },
-          { label: "Go to the fountain", action: { kind: "place", place: "fountain" } },
+          {
+            label: "Go to the fountain",
+            action: { kind: "place", place: "fountain" },
+          },
           MORE_CONTROLS,
         ],
       };
@@ -180,7 +237,7 @@ export function reply(node: GuideNodeId, context: GuideContext): GuideReply {
     case "talk":
       if (!context.canPost) {
         return {
-          text: "You'll need to sign in to talk or post. Use \"Sign in to talk\" at the bottom right.",
+          text: 'You\'ll need to sign in to talk or post. Use "Sign in to talk" at the bottom right.',
           choices: [MORE_CONTROLS, TO_PLACES],
         };
       }
@@ -198,12 +255,20 @@ export function reply(node: GuideNodeId, context: GuideContext): GuideReply {
       const how = context.touch
         ? "Face someone and tap an emoji at the bottom right to react."
         : "Face someone and press an emoji at the bottom right, or keys 1 to 4, to react.";
-      const nobody = context.peopleNearby === 0 ? " There's no one nearby right now, so give it a try when someone comes by." : "";
+      const nobody =
+        context.peopleNearby === 0
+          ? " There's no one nearby right now, so give it a try when someone comes by."
+          : "";
       return {
         text: how + nobody,
         choices: [
           ...(context.peopleNearby > 0
-            ? [{ label: "Let me try", action: { kind: "practice", skill: "react" } } as GuideChoice]
+            ? [
+                {
+                  label: "Let me try",
+                  action: { kind: "practice", skill: "react" },
+                } as GuideChoice,
+              ]
             : []),
           { label: "Talking", action: go("talk") },
           MORE_CONTROLS,
@@ -212,26 +277,35 @@ export function reply(node: GuideNodeId, context: GuideContext): GuideReply {
     }
     case "timeAndWorld":
       return {
-        text: `From the Menu (${context.touch ? "top left" : "or the M key"}) you can switch between Day and Sunset, and change worlds. The time of day only changes your own view.`,
+        text: `From the Menu (${context.touch ? "top left" : "or the M key"}) you can choose a lighting override or the shared clock. Neighbors, tides and weather follow the shared clock. The lookout, tide pools, pier and camp are all a walk away.`,
         choices: [
-          { label: "Open the Menu", action: { kind: "menu", section: "world" } },
+          {
+            label: "Open the Menu",
+            action: { kind: "menu", section: "world" },
+          },
           MORE_CONTROLS,
         ],
       };
     case "profile":
       return {
-        text: "You can change your name and icon under \"You\" in the Menu.",
+        text: 'You can change your name and icon under "You" in the Menu.',
         choices: [
-          { label: "Open the Menu", action: { kind: "menu", section: "profile" } },
+          {
+            label: "Open the Menu",
+            action: { kind: "menu", section: "profile" },
+          },
           MORE_CONTROLS,
         ],
       };
     case "places":
       return {
         text: "Where would you like to go?",
-        choices: PLACES.filter((place) => place.id !== "exhibits" || context.exhibits > 0).map(
-          (place) => ({ label: capitalize(place.label), action: { kind: "place", place: place.id } }),
-        ),
+        choices: PLACES.filter(
+          (place) => place.id !== "exhibits" || context.exhibits > 0,
+        ).map((place) => ({
+          label: capitalize(place.label),
+          action: { kind: "place", place: place.id },
+        })),
       };
     case "unclear":
       return {
@@ -245,7 +319,10 @@ export function reply(node: GuideNodeId, context: GuideContext): GuideReply {
     case "thanks":
       return {
         text: "You're welcome. If there's anything else you'd like to know, just come and ask.",
-        choices: [{ label: "Close", action: { kind: "close" } }, ...ENTRY_CHOICES],
+        choices: [
+          { label: "Close", action: { kind: "close" } },
+          ...ENTRY_CHOICES,
+        ],
       };
   }
 }
@@ -262,7 +339,8 @@ export function departure(place: Place): GuideReply {
 }
 
 /** What she says once you have done what you came for. */
-export const SUCCESS_LINE = "You did it. If there's anything else you'd like to know, just come and ask.";
+export const SUCCESS_LINE =
+  "You did it. If there's anything else you'd like to know, just come and ask.";
 
 /** What each practice asks you to do, shown while you try. */
 export const PRACTICE_PROMPTS: Record<PracticeSkill, string> = {
@@ -275,6 +353,10 @@ export const PRACTICE_PROMPTS: Record<PracticeSkill, string> = {
 
 /** Phrases → where the conversation should go. Order matters: specific first. */
 const INTENTS: readonly [RegExp, GuideNodeId | { place: PlaceId }][] = [
+  [/潮だまり|貝|カニ|pool|shell|crab/i, { place: "pools" }],
+  [/高台|展望|lookout|overlook/i, { place: "lookout" }],
+  [/桟橋|木片|pier|driftwood/i, { place: "pier" }],
+  [/キャンプ|雨宿り|焚き火|camp|shelter/i, { place: "camp" }],
   [/thank|cheers|got it|ありがと|助かった|わかった|できた/i, "thanks"],
   [/噴水|fountain/i, { place: "fountain" }],
   [/展示|アプリ|app|exhibit/i, { place: "exhibits" }],
@@ -287,8 +369,14 @@ const INTENTS: readonly [RegExp, GuideNodeId | { place: PlaceId }][] = [
   [/リアクション|絵文字|react|emoji/i, "react"],
   [/時間|夕焼け|夜|昼|ワールド|world|sunset|time/i, "timeAndWorld"],
   [/名前|アイコン|プロフィール|name|avatar|profile/i, "profile"],
-  [/where|place|go to|take me|tour|show me around|場所|どこ|案内|行き|連れて/i, "places"],
-  [/what can|how|help|stuck|lost|confus|don'?t know|できる|使い方|操作|わからない|困|教えて/i, "whatCan"],
+  [
+    /where|place|go to|take me|tour|show me around|場所|どこ|案内|行き|連れて/i,
+    "places",
+  ],
+  [
+    /what can|how|help|stuck|lost|confus|don'?t know|できる|使い方|操作|わからない|困|教えて/i,
+    "whatCan",
+  ],
   [/plaza|what is this|what'?s this|プラザ|ここ(は|って)|なに|何/i, "about"],
 ];
 
@@ -300,7 +388,9 @@ export function understand(text: string): GuideIntent {
   if (!trimmed) return { node: "unclear" };
   for (const [pattern, target] of INTENTS) {
     if (pattern.test(trimmed)) {
-      return typeof target === "string" ? { node: target } : { place: target.place };
+      return typeof target === "string"
+        ? { node: target }
+        : { place: target.place };
     }
   }
   return { node: "unclear" };

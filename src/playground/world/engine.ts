@@ -1,3 +1,8 @@
+import { mantleTarget } from "./openAir/mantle";
+import { createBeachAudio } from "./openAir/audio";
+import { readSettings, type ExploreSettings } from "./openAir/settings";
+import { worldMoment } from "./openAir/clock";
+import { waterDepth } from "./beach/coast";
 /**
  * The part that does not change when the World does.
  *
@@ -73,6 +78,7 @@ export interface Engine {
   onFrame(handler: (frame: EngineFrame) => void): void;
   requestPointerLock(): void;
   setPaused(paused: boolean): void;
+  setSettings(settings: ExploreSettings): void;
   setJoystick(x: number, y: number): void;
   /** Touch jump button (keyboard uses Space). Ignored while paused. */
   jump(): void;
@@ -84,7 +90,9 @@ export interface Engine {
   /** Touch crouch toggle. ORed with the held C / Control keys. */
   setCrouching(crouching: boolean): void;
   /** Screen position for a world point, or null when off-screen/behind. */
-  project(point: THREE.Vector3): { left: number; top: number; distance: number } | null;
+  project(
+    point: THREE.Vector3,
+  ): { left: number; top: number; distance: number } | null;
   cadenceDue(now: number): boolean;
   dispose(): void;
 }
@@ -95,6 +103,12 @@ const NO_COLLIDERS: readonly Collider[] = [];
 const JUMP_BUFFER_MS = 150;
 
 export function createEngine(options: EngineOptions): Engine {
+  let settings = readSettings();
+  const audio = createBeachAudio();
+  audio.volume(settings.volume);
+  let resumeView = false,
+    skyKey = "",
+    lastWaterWarning = 0;
   const { host } = options;
   const width = host.clientWidth || 1;
   const height = host.clientHeight || 1;
@@ -117,13 +131,21 @@ export function createEngine(options: EngineOptions): Engine {
       forcedQuality === "low" || forcedQuality === "high"
         ? forcedQuality
         : detectQuality({
-            coarsePointer: window.matchMedia?.("(pointer: coarse)").matches ?? false,
-            shortSide: Math.min(window.screen?.width ?? width, window.screen?.height ?? height),
+            coarsePointer:
+              window.matchMedia?.("(pointer: coarse)").matches ?? false,
+            shortSide: Math.min(
+              window.screen?.width ?? width,
+              window.screen?.height ?? height,
+            ),
             cores: navigator.hardwareConcurrency || undefined,
-            memoryGb: (navigator as Navigator & { deviceMemory?: number }).deviceMemory,
+            memoryGb: (navigator as Navigator & { deviceMemory?: number })
+              .deviceMemory,
           })
     ];
-  const pixelRatio = new PixelRatioController(quality, window.devicePixelRatio || 1);
+  const pixelRatio = new PixelRatioController(
+    quality,
+    window.devicePixelRatio || 1,
+  );
   renderer.setPixelRatio(pixelRatio.current);
   renderer.setSize(width, height);
   renderer.shadowMap.enabled = true;
@@ -162,7 +184,13 @@ export function createEngine(options: EngineOptions): Engine {
   sun.shadow.normalBias = 0.02;
   scene.add(sun);
   scene.add(sun.target);
-  const environment = createEnvironment(renderer, scene, camera, sun, hemisphere);
+  const environment = createEnvironment(
+    renderer,
+    scene,
+    camera,
+    sun,
+    hemisphere,
+  );
 
   const keys = new Set<string>();
   let dragPointer = -1;
@@ -187,6 +215,7 @@ export function createEngine(options: EngineOptions): Engine {
     dragLook = true;
     keys.clear();
     jumpRequested = false;
+    mantle = null;
     options.onPointerLockChange(true, "drag");
   };
   const leaveDragLook = () => {
@@ -195,6 +224,7 @@ export function createEngine(options: EngineOptions): Engine {
     dragPointer = -1;
     keys.clear();
     jumpRequested = false;
+    mantle = null;
     options.onPointerLockChange(false, "drag");
   };
   let raf = 0;
@@ -205,6 +235,13 @@ export function createEngine(options: EngineOptions): Engine {
   // is the held C / Control keys in `keys`. Either crouches.
   let vy = 0;
   let grounded = true;
+  let mantle: {
+    from: THREE.Vector3;
+    x: number;
+    z: number;
+    y: number;
+    elapsed: number;
+  } | null = null;
   let jumpRequested = false;
   // When the jump was asked for. A press made a moment before touching down
   // (a step, a dune, the end of the last jump) is kept briefly and honoured
@@ -247,6 +284,7 @@ export function createEngine(options: EngineOptions): Engine {
     // Keys held when the lock breaks would otherwise stick down forever.
     keys.clear();
     jumpRequested = false;
+    mantle = null;
     options.onPointerLockChange(locked, "lock");
   });
   on(document, "pointerlockerror", enterDragLook);
@@ -254,8 +292,14 @@ export function createEngine(options: EngineOptions): Engine {
   on(document, "mousemove", (event) => {
     if (!locked || paused) return;
     const mouse = event as MouseEvent;
-    yaw -= mouse.movementX * 0.0022;
-    pitch = clampPitch(pitch - mouse.movementY * 0.0022);
+    yaw -= mouse.movementX * 0.0022 * settings.sensitivity;
+    pitch = clampPitch(
+      pitch -
+        mouse.movementY *
+          0.0022 *
+          settings.sensitivity *
+          (settings.invertY ? -1 : 1),
+    );
   });
 
   on(window, "keydown", (event) => {
@@ -276,6 +320,13 @@ export function createEngine(options: EngineOptions): Engine {
       keyboard.preventDefault();
       keys.clear();
       options.onRequestMenu?.();
+      return;
+    }
+    if (
+      (keyboard.code === "KeyQ" || keyboard.code === "KeyF") &&
+      !keyboard.repeat
+    ) {
+      world?.openAir?.useHeld(keyboard.code === "KeyF");
       return;
     }
     if (keyboard.code === "KeyE") {
@@ -310,6 +361,7 @@ export function createEngine(options: EngineOptions): Engine {
   on(window, "blur", () => {
     keys.clear();
     jumpRequested = false;
+    mantle = null;
     joystick.x = 0;
     joystick.y = 0;
   });
@@ -336,8 +388,14 @@ export function createEngine(options: EngineOptions): Engine {
   on(renderer.domElement, "pointermove", (event) => {
     const pointer = event as PointerEvent;
     if (pointer.pointerId !== dragPointer || paused) return;
-    yaw -= (pointer.clientX - dragX) * 0.005;
-    pitch = clampPitch(pitch - (pointer.clientY - dragY) * 0.005);
+    yaw -= (pointer.clientX - dragX) * 0.003 * settings.sensitivity;
+    pitch = clampPitch(
+      pitch -
+        (pointer.clientY - dragY) *
+          0.003 *
+          settings.sensitivity *
+          (settings.invertY ? -1 : 1),
+    );
     dragX = pointer.clientX;
     dragY = pointer.clientY;
   });
@@ -397,12 +455,23 @@ export function createEngine(options: EngineOptions): Engine {
     let right = 0;
     let ahead = 0;
     if (!paused) {
-      right = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0) + joystick.x;
-      ahead = (keys.has("KeyW") ? 1 : 0) - (keys.has("KeyS") ? 1 : 0) + joystick.y;
+      right =
+        (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0) + joystick.x;
+      ahead =
+        (keys.has("KeyW") ? 1 : 0) - (keys.has("KeyS") ? 1 : 0) + joystick.y;
+    }
+    let seat = world?.openAir?.seat() ?? null;
+    if (seat && !paused && (right || ahead || jumpRequested)) {
+      world?.openAir?.stand();
+      camera.position.z = seat.z - 1;
+      camera.position.y = (groundY?.(seat.x, seat.z - 1) ?? 0) + EYE_HEIGHT;
+      vy = 0;
+      seat = null;
     }
     const crouching =
       keys.has("KeyC") || keys.has("ControlLeft") || mobileCrouch;
-    const scale = world?.speedScale?.(camera.position.x, camera.position.z) ?? 1;
+    const scale =
+      world?.speedScale?.(camera.position.x, camera.position.z) ?? 1;
     const speed = (crouching ? CROUCH_SPEED : WALK_SPEED) * scale;
     const { vx, vz, magnitude } = movementVector(
       { right, forward: ahead },
@@ -410,6 +479,25 @@ export function createEngine(options: EngineOptions): Engine {
       dt,
       speed,
     );
+    if (!paused && !mantle && grounded && jumpRequested && magnitude > 0.05) {
+      const target = mantleTarget(
+        camera.position,
+        { x: vx, z: vz },
+        camera.position.y - (crouching ? CROUCH_EYE_HEIGHT : EYE_HEIGHT),
+        world?.colliders ?? NO_COLLIDERS,
+        world?.walkable,
+      );
+      if (target) {
+        mantle = {
+          from: camera.position.clone(),
+          x: target.x,
+          z: target.z,
+          y: target.top + (crouching ? CROUCH_EYE_HEIGHT : EYE_HEIGHT),
+          elapsed: 0,
+        };
+        jumpRequested = false;
+      }
+    }
     const moved = resolveMovement(
       { x: camera.position.x, z: camera.position.z },
       { vx, vz },
@@ -418,12 +506,24 @@ export function createEngine(options: EngineOptions): Engine {
       // Obstacles you have jumped level with stop blocking (see `top`).
       blockingColliders(
         world?.colliders ?? NO_COLLIDERS,
-        camera.position.y - (crouching ? CROUCH_EYE_HEIGHT : EYE_HEIGHT),
+        camera.position.y -
+          (crouching ? CROUCH_EYE_HEIGHT : EYE_HEIGHT) +
+          (grounded ? 0.24 : 0),
       ),
       undefined,
       WORLD_RADIUS,
       world?.walkable,
     );
+    if (
+      magnitude > 0.05 &&
+      Math.hypot(moved.x - camera.position.x, moved.z - camera.position.z) <
+        0.001 &&
+      waterDepth(camera.position.x, camera.position.z) > 0.4 &&
+      now - lastWaterWarning > 4500
+    ) {
+      lastWaterWarning = now;
+      audio.splash();
+    }
     camera.position.x = moved.x;
     camera.position.z = moved.z;
     // Vertical: stick to small terrain changes, fall off edges, arc on jump.
@@ -436,18 +536,80 @@ export function createEngine(options: EngineOptions): Engine {
       groundEye,
       jumpRequested && !paused,
     );
-    if (jumpRequested && (grounded || performance.now() - jumpRequestedAt > JUMP_BUFFER_MS)) {
+    if (
+      jumpRequested &&
+      (grounded || performance.now() - jumpRequestedAt > JUMP_BUFFER_MS)
+    ) {
       jumpRequested = false;
     }
     vy = vertical.vy;
     grounded = vertical.grounded;
     camera.position.y = vertical.y;
+    if (mantle && !paused) {
+      mantle.elapsed += dt;
+      const progress = Math.min(1, mantle.elapsed / 0.24),
+        ease = progress * progress * (3 - 2 * progress);
+      camera.position.set(
+        mantle.from.x + (mantle.x - mantle.from.x) * ease,
+        mantle.from.y +
+          (mantle.y - mantle.from.y) * Math.sin((progress * Math.PI) / 2),
+        mantle.from.z + (mantle.z - mantle.from.z) * ease,
+      );
+      vy = 0;
+      grounded = progress === 1;
+      if (progress === 1) mantle = null;
+    }
+    if (seat) {
+      camera.position.set(seat.x, seat.top + 0.9, seat.z);
+      vy = 0;
+      grounded = true;
+    }
     camera.rotation.set(pitch, yaw, 0, "YXZ");
     camera.getWorldDirection(forward);
 
+    world?.openAir?.setEye(
+      camera.position,
+      forward,
+      crouching,
+      magnitude > 0.05,
+    );
     world?.update?.(dt, devClock ?? now, camera.position);
+    const moment = worldMoment(world?.openAir?.now() ?? Date.now());
+    if (world?.openAir) {
+      const sound = world.openAir.takeSound();
+      if (sound === "splash") audio.splash();
+      else if (sound === "chime") audio.chime();
+      const mood =
+        timeOfDay ?? (moment.phase === "sunset" ? "magic-hour" : moment.phase);
+      const key = `${mood}:${moment.weather}`;
+      if (key !== skyKey) {
+        const sky = mountedDefinition?.environment.timesOfDay?.find(
+          (entry) => entry.id === mood,
+        )?.sky;
+        if (sky)
+          environment.retune(
+            moment.weather === "rain"
+              ? { ...sky, clouds: 0.95, sunIntensity: sky.sunIntensity * 0.45 }
+              : sky,
+          );
+        skyKey = key;
+      }
+      audio.update(
+        camera.position.x,
+        camera.position.z,
+        yaw,
+        magnitude > 0.05,
+        waterDepth(camera.position.x, camera.position.z) + moment.tide > 0,
+        Math.hypot(camera.position.x, camera.position.z) < 3.5,
+        camera.position.x > 20 &&
+          camera.position.x < 24 &&
+          camera.position.z < -23,
+        now,
+        moment.wind,
+      );
+    }
 
-    const pose: Pose = crouching ? "crouch" : "stand";
+    const pose: Pose = seat ? "sit" : crouching ? "crouch" : "stand";
     frameHandler?.({
       now,
       dt,
@@ -456,7 +618,13 @@ export function createEngine(options: EngineOptions): Engine {
       forward,
     });
 
+    const bob =
+      settings.motion && !reducedMotion && grounded && magnitude > 0.05
+        ? Math.sin(now * 0.009) * 0.016
+        : 0;
+    camera.position.y += bob;
     renderer.render(scene, camera);
+    camera.position.y -= bob;
   }
 
   function unmountWorld(): void {
@@ -515,8 +683,8 @@ export function createEngine(options: EngineOptions): Engine {
 
       camera.position.set(
         definition.spawn.x,
-        (runtime.groundY?.(definition.spawn.x, definition.spawn.z) ?? definition.spawn.y) +
-          EYE_HEIGHT,
+        (runtime.groundY?.(definition.spawn.x, definition.spawn.z) ??
+          definition.spawn.y) + EYE_HEIGHT,
         definition.spawn.z,
       );
       yaw = definition.spawn.yaw;
@@ -526,6 +694,7 @@ export function createEngine(options: EngineOptions): Engine {
       vy = 0;
       grounded = true;
       jumpRequested = false;
+      mantle = null;
       mobileCrouch = false;
       keys.clear();
       // A World change is a teleport; the next transform must go out
@@ -539,11 +708,18 @@ export function createEngine(options: EngineOptions): Engine {
     },
 
     requestPointerLock() {
+      audio.start();
       // Touch devices have no pointer to lock; drag-look is the equivalent.
-      if (window.matchMedia?.("(pointer: coarse)").matches) return;
+      if (window.matchMedia?.("(pointer: coarse)").matches) {
+        enterDragLook();
+        return;
+      }
       // A frame that forbids the lock (sandbox without allow-pointer-lock)
       // refuses every request; steer by dragging instead of failing again.
-      if (lockUnavailable || typeof renderer.domElement.requestPointerLock !== "function") {
+      if (
+        lockUnavailable ||
+        typeof renderer.domElement.requestPointerLock !== "function"
+      ) {
         enterDragLook();
         return;
       }
@@ -557,12 +733,22 @@ export function createEngine(options: EngineOptions): Engine {
       }
     },
 
+    setSettings(next) {
+      settings = next;
+      audio.volume(next.volume);
+    },
     setPaused(next) {
+      if (next && !paused) resumeView = engaged();
       paused = next;
       // Chat takes the keyboard; the drag view resumes with the next request.
       if (next) leaveDragLook();
+      else if (resumeView) {
+        enterDragLook();
+        resumeView = false;
+      }
       keys.clear();
       jumpRequested = false;
+      mantle = null;
       joystick.x = 0;
       joystick.y = 0;
     },
@@ -578,6 +764,7 @@ export function createEngine(options: EngineOptions): Engine {
 
     setTimeOfDay(id) {
       timeOfDay = id;
+      skyKey = "";
       const entry = mountedDefinition?.environment.timesOfDay?.find(
         (candidate) => candidate.id === id,
       );
@@ -621,6 +808,7 @@ export function createEngine(options: EngineOptions): Engine {
       hemisphere.dispose();
       sun.dispose();
       sun.shadow.map?.dispose();
+      audio.dispose();
       renderer.dispose();
       host.replaceChildren();
     },

@@ -33,16 +33,44 @@ interface GuideDialogProps {
    * the API is unreachable (local dev), the page answers by rule itself.
    */
   useModel: boolean;
+  waitingForClaim?: boolean;
+  sharedApps?: readonly { ref: string; title: string }[];
+  onTryApp?(ref: string): void;
+  onDiscussApp?(ref: string): void;
+  heldItem?: string | null;
+  onDeliver?(): void;
+  onEscort?(goal: "pools" | "camp" | "pier" | "lookout"): void;
+  memories?: string[];
 }
 
-export function GuideDialog({ open, npc, context, start, onAction, onClose, useModel }: GuideDialogProps) {
+export function GuideDialog({
+  open,
+  npc,
+  context,
+  start,
+  onAction,
+  onClose,
+  useModel,
+  onEscort,
+  onDeliver,
+  heldItem,
+  sharedApps = [],
+  onTryApp,
+  onDiscussApp,
+  waitingForClaim = false,
+  memories = [],
+}: GuideDialogProps) {
   const [current, setCurrent] = useState<GuideReply>(start);
   const [asked, setAsked] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   // One server conversation per opening of the dialog; ended when it closes.
-  const conversationRef = useRef<{ id: string; npcId: NpcProfile["id"]; used: boolean } | null>(null);
+  const conversationRef = useRef<{
+    id: string;
+    npcId: NpcProfile["id"];
+    used: boolean;
+  } | null>(null);
   const pendingRef = useRef<AbortController | null>(null);
 
   const endConversation = () => {
@@ -51,7 +79,8 @@ export function GuideDialog({ open, npc, context, start, onAction, onClose, useM
     setThinking(false);
     const conversation = conversationRef.current;
     conversationRef.current = null;
-    if (conversation?.used) endNpcConversation(conversation.npcId, conversation.id);
+    if (conversation?.used)
+      endNpcConversation(conversation.npcId, conversation.id);
   };
 
   useEffect(() => {
@@ -91,6 +120,18 @@ export function GuideDialog({ open, npc, context, start, onAction, onClose, useM
       return;
     }
     if (action.kind === "place") {
+      if (action.place === "exhibits" && context.exhibits === 0) {
+        setCurrent({
+          text: "There are no app displays right now. Share an app link in Talk, or explore the tide pools.",
+          choices: [
+            {
+              label: "Explore the tide pools",
+              action: { kind: "place", place: "pools" },
+            },
+          ],
+        });
+        return;
+      }
       const place = PLACE_BY_ID.get(action.place);
       if (place) setCurrent(departure(place));
       return;
@@ -116,7 +157,7 @@ export function GuideDialog({ open, npc, context, start, onAction, onClose, useM
   const ask = (event: React.FormEvent) => {
     event.preventDefault();
     const text = draft.trim().slice(0, 400);
-    if (!text || thinking) return;
+    if (!text || thinking || waitingForClaim) return;
     setDraft("");
     const conversation = conversationRef.current;
     if (!useModel || !conversation) {
@@ -139,15 +180,27 @@ export function GuideDialog({ open, npc, context, start, onAction, onClose, useM
     })
       .then((answer) => {
         // A reply to a conversation already closed or cancelled is dropped.
-        if (pendingRef.current !== controller || conversationRef.current !== conversation) return;
+        if (
+          pendingRef.current !== controller ||
+          conversationRef.current !== conversation
+        )
+          return;
         setCurrent({ text: answer.text, choices: answer.choices });
       })
       .catch((error: unknown) => {
-        if (pendingRef.current !== controller || conversationRef.current !== conversation) return;
+        if (
+          pendingRef.current !== controller ||
+          conversationRef.current !== conversation
+        )
+          return;
         // A closed or foreign conversation id: start a fresh one next time.
         if (error instanceof NpcChatError && /conversation_/.test(error.code)) {
           endConversation();
-    conversationRef.current = { id: newId("conv"), npcId: npc.id, used: false };
+          conversationRef.current = {
+            id: newId("conv"),
+            npcId: npc.id,
+            used: false,
+          };
         }
         answerLocally(text);
       })
@@ -185,10 +238,27 @@ export function GuideDialog({ open, npc, context, start, onAction, onClose, useM
           <strong>{npc.name}</strong>
           <small>{npc.role}</small>
         </div>
-        <button type="button" className="pg-menu-close" onClick={onClose} aria-label="Close">
+        <button
+          type="button"
+          className="pg-menu-close"
+          onClick={onClose}
+          aria-label="Close"
+        >
           ✕
         </button>
       </header>
+      {memories.some((entry) => entry.startsWith(`${npc.id}:`)) ? (
+        <p className="pg-guide-memory">
+          We met earlier:{" "}
+          {memories
+            .filter((entry) => entry.startsWith(`${npc.id}:`))
+            .slice(-1)[0]
+            ?.split(": ")
+            .slice(1)
+            .join(": ")}
+        </p>
+      ) : null}
+      {waitingForClaim ? <p role="status">Waiting for this neighbor…</p> : null}
       {asked ? <p className="pg-guide-asked">{asked}</p> : null}
       <p className="pg-guide-line" aria-live="polite">
         {thinking ? (
@@ -208,19 +278,71 @@ export function GuideDialog({ open, npc, context, start, onAction, onClose, useM
       ) : null}
       <div className="pg-guide-choices" hidden={thinking}>
         {current.choices.map((choice) => (
-          <button key={choice.label} type="button" onClick={() => choose(choice.action, choice.label)}>
+          <button
+            key={choice.label}
+            type="button"
+            onClick={() => choose(choice.action, choice.label)}
+          >
             {choice.label}
           </button>
         ))}
       </div>
+      {npc.id === "owl" && heldItem === "keepsake" && onDeliver ? (
+        <button className="pg-guide-choice" onClick={onDeliver}>
+          Return your lost shell
+        </button>
+      ) : null}
+      {sharedApps.length ? (
+        <details className="pg-escort">
+          <summary>Apps on display</summary>
+          {sharedApps.slice(0, 2).map((app) => (
+            <div className="pg-guide-choices" key={app.ref}>
+              <span>{app.title}</span>
+              <button onClick={() => onTryApp?.(app.ref)}>Try it</button>
+              <button onClick={() => onDiscussApp?.(app.ref)}>
+                Talk about this app
+              </button>
+            </div>
+          ))}
+        </details>
+      ) : null}
+      {onEscort && npc.id !== "nagi" ? (
+        <details className="pg-escort">
+          <summary>Explore together</summary>
+          <div className="pg-guide-choices">
+            <button
+              disabled={waitingForClaim}
+              onClick={() => onEscort("pools")}
+            >
+              Find shells at the tide pools
+            </button>
+            <button disabled={waitingForClaim} onClick={() => onEscort("pier")}>
+              Float driftwood at the pier
+            </button>
+            <button disabled={waitingForClaim} onClick={() => onEscort("camp")}>
+              Watch the sky at camp
+            </button>
+            <button
+              disabled={waitingForClaim}
+              onClick={() => onEscort("lookout")}
+            >
+              Climb the dune lookout
+            </button>
+          </div>
+        </details>
+      ) : null}
       <form className="pg-guide-ask" onSubmit={ask}>
         <input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder={npc.id === "nagi" ? "Ask anything (e.g. What can I do here?)" : `Talk to ${npc.name}…`}
+          placeholder={
+            npc.id === "nagi"
+              ? "Ask anything (e.g. What can I do here?)"
+              : `Talk to ${npc.name}…`
+          }
           aria-label={`Say something to ${npc.name}`}
           maxLength={400}
-          disabled={thinking}
+          disabled={thinking || waitingForClaim}
         />
         <button type="submit" disabled={!draft.trim() || thinking}>
           Send
@@ -229,4 +351,3 @@ export function GuideDialog({ open, npc, context, start, onAction, onClose, useM
     </div>
   );
 }
-

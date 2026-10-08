@@ -21,6 +21,7 @@ export const EYE_HEIGHT = 1.65;
 export const WALK_SPEED = 3.4;
 /** Crouched eye height. The view drops; the reported transform does not (see below). */
 export const CROUCH_EYE_HEIGHT = 1.05;
+export const SIT_EYE_DROP = 0.42;
 /** How much lower the eye sits when crouching. Added back when reporting. */
 export const CROUCH_EYE_DROP = EYE_HEIGHT - CROUCH_EYE_HEIGHT;
 /** Crouched movement is deliberately slow: half the walk speed. */
@@ -56,15 +57,15 @@ export type LocomotionPose = "stand" | "sit" | "crouch";
 /**
  * Eye height for a pose, FIRST-PERSON view.
  *
- * `sit` keeps the standing height here on purpose: sitting is rendered by
- * dropping the remote body (see `avatar.ts` SIT_DROP), and the sender never
- * lowers its own report for it — so a client that ignores the pose still
- * stands at the right feet instead of sunk into the floor. Crouch follows
- * the same rule on the WIRE (the reported `y` stays stand-based; see
- * `reportEyeY`), while the local camera genuinely drops to this height.
+ * Both sitting and crouching lower the local view. Their wire report stays
+ * stand-based via `reportEyeY`, so pose-unaware peers still recover the floor.
  */
 export function eyeHeightForPose(pose: LocomotionPose): number {
-  return pose === "crouch" ? CROUCH_EYE_HEIGHT : EYE_HEIGHT;
+  return pose === "crouch"
+    ? CROUCH_EYE_HEIGHT
+    : pose === "sit"
+      ? EYE_HEIGHT - SIT_EYE_DROP
+      : EYE_HEIGHT;
 }
 
 /**
@@ -73,7 +74,10 @@ export function eyeHeightForPose(pose: LocomotionPose): number {
  * CROUCH_EYE_DROP back so old clients (pose-unaware) keep the right feet.
  */
 export function reportEyeY(cameraY: number, pose: LocomotionPose): number {
-  return cameraY + (pose === "crouch" ? CROUCH_EYE_DROP : 0);
+  return (
+    cameraY +
+    (pose === "crouch" ? CROUCH_EYE_DROP : pose === "sit" ? SIT_EYE_DROP : 0)
+  );
 }
 
 /**
@@ -231,7 +235,9 @@ export function chooseTarget<T>(
 export class SendCadence {
   private last = Number.NEGATIVE_INFINITY;
 
-  constructor(private readonly intervalMs: number = TRANSFORM_SEND_INTERVAL_MS) {}
+  constructor(
+    private readonly intervalMs: number = TRANSFORM_SEND_INTERVAL_MS,
+  ) {}
 
   /** True at most once per interval; records the time when it returns true. */
   due(now: number): boolean {
@@ -298,7 +304,11 @@ export function sanitizeTransform(input: unknown): RemoteTransform | null {
   }
   if (values.y < TRANSFORM_Y_MIN || values.y > TRANSFORM_Y_MAX) return null;
   const movement: MovementState =
-    raw.movement === "walk" ? "walk" : raw.movement === "jump" ? "jump" : "idle";
+    raw.movement === "walk"
+      ? "walk"
+      : raw.movement === "jump"
+        ? "jump"
+        : "idle";
   // Unknown pose defaults to standing rather than rejecting the whole message:
   // a position is still useful, and a server that later adds a fourth pose
   // should not make everybody invisible to older clients. (Crouch senders keep

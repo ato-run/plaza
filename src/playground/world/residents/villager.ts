@@ -1,3 +1,14 @@
+import type { OpenAirRuntime } from "../openAir/scene";
+import {
+  activeLease,
+  itemPosition,
+  ITEMS,
+  type ResidentId,
+} from "../openAir/model";
+import { OPEN_AIR_PLACES, landmarkGround } from "../openAir/layout";
+import { worldMoment } from "../openAir/clock";
+import { terrainHeight } from "../beach/coast";
+import { findPath, type Grid } from "./schedule";
 import { residentReaction } from "./reaction";
 /**
  * The residents in the scene: one merged, vertex-coloured mesh for each body
@@ -23,16 +34,78 @@ interface Look {
 }
 
 const LOOKS: Record<Species, Look> = {
-  cat: { fur: "#c9b49a", accent: "#8f7b66", belly: "#efe4d4", ears: "pointed", muzzle: "snout" },
-  dog: { fur: "#c99a63", accent: "#8a5f35", belly: "#f1e3cf", ears: "floppy", muzzle: "snout" },
-  panda: { fur: "#f2f0ea", accent: "#2f2f2f", belly: "#ffffff", ears: "round", muzzle: "nose", eyes: "patches" },
-  fox: { fur: "#d47a3e", accent: "#8f4a22", belly: "#f6e8d8", ears: "pointed", muzzle: "snout" },
-  penguin: { fur: "#34404c", accent: "#222a31", belly: "#f2f1e7", ears: "none", muzzle: "beak" },
-  rabbit: { fur: "#e6ded3", accent: "#c8bdb0", belly: "#f8f4ee", ears: "long", muzzle: "nose" },
-  bear: { fur: "#8a5a3a", accent: "#5e3b24", belly: "#c49a75", ears: "round", muzzle: "snout" },
-  koala: { fur: "#9aa0a6", accent: "#6b7076", belly: "#e3e5e6", ears: "round", muzzle: "nose" },
-  frog: { fur: "#7fb35a", accent: "#4f7f35", belly: "#e6efb5", ears: "none", muzzle: "none", eyes: "top" },
-  owl: { fur: "#9b7b56", accent: "#6a5038", belly: "#ead9bd", ears: "tufts", muzzle: "beak" },
+  cat: {
+    fur: "#c9b49a",
+    accent: "#8f7b66",
+    belly: "#efe4d4",
+    ears: "pointed",
+    muzzle: "snout",
+  },
+  dog: {
+    fur: "#c99a63",
+    accent: "#8a5f35",
+    belly: "#f1e3cf",
+    ears: "floppy",
+    muzzle: "snout",
+  },
+  panda: {
+    fur: "#f2f0ea",
+    accent: "#2f2f2f",
+    belly: "#ffffff",
+    ears: "round",
+    muzzle: "nose",
+    eyes: "patches",
+  },
+  fox: {
+    fur: "#d47a3e",
+    accent: "#8f4a22",
+    belly: "#f6e8d8",
+    ears: "pointed",
+    muzzle: "snout",
+  },
+  penguin: {
+    fur: "#34404c",
+    accent: "#222a31",
+    belly: "#f2f1e7",
+    ears: "none",
+    muzzle: "beak",
+  },
+  rabbit: {
+    fur: "#e6ded3",
+    accent: "#c8bdb0",
+    belly: "#f8f4ee",
+    ears: "long",
+    muzzle: "nose",
+  },
+  bear: {
+    fur: "#8a5a3a",
+    accent: "#5e3b24",
+    belly: "#c49a75",
+    ears: "round",
+    muzzle: "snout",
+  },
+  koala: {
+    fur: "#9aa0a6",
+    accent: "#6b7076",
+    belly: "#e3e5e6",
+    ears: "round",
+    muzzle: "nose",
+  },
+  frog: {
+    fur: "#7fb35a",
+    accent: "#4f7f35",
+    belly: "#e6efb5",
+    ears: "none",
+    muzzle: "none",
+    eyes: "top",
+  },
+  owl: {
+    fur: "#9b7b56",
+    accent: "#6a5038",
+    belly: "#ead9bd",
+    ears: "tufts",
+    muzzle: "beak",
+  },
 };
 
 const color = new THREE.Color();
@@ -150,7 +223,10 @@ function merged(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
   let io = 0;
   for (const geometry of parts) {
     const count = geometry.getAttribute("position").count;
-    position.set(geometry.getAttribute("position").array as Float32Array, vo * 3);
+    position.set(
+      geometry.getAttribute("position").array as Float32Array,
+      vo * 3,
+    );
     normal.set(geometry.getAttribute("normal").array as Float32Array, vo * 3);
     colours.set(geometry.getAttribute("color").array as Float32Array, vo * 3);
     const source = geometry.getIndex()!.array;
@@ -173,7 +249,11 @@ export interface Residents {
   interactables: Interactable[];
   labels: { element: HTMLElement; position: THREE.Vector3 }[];
   /** `others` are characters residents must keep clear of (Nagi). */
-  update(eye: THREE.Vector3 | undefined, reducedMotion: boolean, others?: readonly { x: number; z: number }[]): void;
+  update(
+    eye: THREE.Vector3 | undefined,
+    reducedMotion: boolean,
+    others?: readonly { x: number; z: number }[],
+  ): void;
   /**
    * Keep a resident where they are, facing you, while you talk to them —
    * for this viewer only; then they walk back into their day.
@@ -187,6 +267,12 @@ interface Live {
   spec: ResidentSpec;
   group: THREE.Group;
   head: THREE.Mesh;
+  tool: THREE.Mesh;
+  activitySeen: number;
+  leaseKey: string | null;
+  leaseActive: boolean;
+  escortDistance: number;
+  lastUpdate: number;
   bubble: HTMLDivElement;
   label: HTMLDivElement;
   labelPosition: THREE.Vector3;
@@ -205,27 +291,40 @@ interface Live {
   /** Talking with this viewer: stays put. */
   held: { x: number; z: number; pose: "stand" | "sit" } | null;
   /** Just let go: blends from here back onto the schedule. */
-  rejoin: { x: number; z: number; from: number } | null;
+  rejoin: {
+    x: number;
+    z: number;
+    from: number;
+    route?: { x: number; z: number }[];
+  } | null;
 }
 
 /** How long a resident takes to walk back into their day after a talk. */
-const REJOIN_MS = 2200;
 
 /** The schedule's clock: wall time, so every visitor sees the same plaza. */
-const clock = () => Date.now() / 1000;
 
 export function createResidents(
   builder: WorldBuilder,
   labelHost: HTMLElement,
   cast: readonly ResidentSpec[],
   schedule: Schedule,
+  grid?: Grid,
+  openAir?: OpenAirRuntime,
 ): Residents {
-  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+  const material = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.85,
+  });
+  const seenObjectActions = new Map<string, number>();
+  const escortRoutes = new Map<string, { x: number; z: number }[]>();
   const live: Live[] = cast.map((spec) => {
     const look = LOOKS[spec.species];
     const group = builder.group();
     group.name = `resident:${spec.id}`;
-    const body = new THREE.Mesh(merged(bodyGeometry(look, spec.shirt)), material);
+    const body = new THREE.Mesh(
+      merged(bodyGeometry(look, spec.shirt)),
+      material,
+    );
     body.castShadow = true;
     body.receiveShadow = true;
     builder.track(body, group);
@@ -233,6 +332,17 @@ export function createResidents(
     head.position.y = NECK;
     head.castShadow = true;
     builder.track(head, group);
+    const tool = builder.box(
+      0.07,
+      0.45,
+      0.07,
+      spec.id === "koala" ? "#79954f" : "#c99a63",
+      -0.32,
+      0.4,
+      0.2,
+      group,
+    );
+    tool.visible = false;
     const label = document.createElement("div");
     label.className = "pg-label";
     const bubble = document.createElement("div");
@@ -244,6 +354,12 @@ export function createResidents(
       spec,
       group,
       head,
+      tool,
+      activitySeen: 0,
+      leaseKey: null,
+      leaseActive: false,
+      escortDistance: 0,
+      lastUpdate: 0,
       bubble,
       label,
       labelPosition: new THREE.Vector3(),
@@ -279,15 +395,22 @@ export function createResidents(
   return {
     colliders: live.map((resident) => resident.collider),
     interactables,
-    labels: live.map((resident) => ({ element: resident.label, position: resident.labelPosition })),
+    labels: live.map((resident) => ({
+      element: resident.label,
+      position: resident.labelPosition,
+    })),
 
     update(eye, reducedMotion, others = []) {
-      const seconds = clock();
+      const seconds = (openAir?.now() ?? Date.now()) / 1000;
       const nowMs = seconds * 1000;
       const states = live.map((resident, index) => {
         const state = { ...schedule.stateAt(index, seconds) };
         if (resident.reactionPause && nowMs >= resident.reactionPause.until) {
-          resident.rejoin = { x: resident.reactionPause.x, z: resident.reactionPause.z, from: nowMs };
+          resident.rejoin = {
+            x: resident.reactionPause.x,
+            z: resident.reactionPause.z,
+            from: nowMs,
+          };
           resident.reactionPause = null;
         }
         if (resident.reactionPause && !resident.held) {
@@ -300,24 +423,173 @@ export function createResidents(
           state.pose = resident.held.pose;
           state.moving = false;
         } else if (resident.rejoin) {
-          const k = (nowMs - resident.rejoin.from) / REJOIN_MS;
-          if (k >= 1) {
-            resident.rejoin = null;
-          } else {
-            const ease = k * k * (3 - 2 * k);
-            state.x = resident.rejoin.x + (state.x - resident.rejoin.x) * ease;
-            state.z = resident.rejoin.z + (state.z - resident.rejoin.z) * ease;
-            state.pose = "stand";
-            state.moving = true;
+          const join = resident.rejoin;
+          if (grid && !join.route)
+            join.route = [
+              { x: join.x, z: join.z },
+              ...findPath(grid, join, state),
+            ];
+          const route = join.route ?? [
+            { x: join.x, z: join.z },
+            { x: state.x, z: state.z },
+          ];
+          let distance = ((nowMs - join.from) / 1000) * 1.8,
+            arrived = true;
+          for (let j = 1; j < route.length; j++) {
+            const a = route[j - 1],
+              b = route[j],
+              length = Math.hypot(b.x - a.x, b.z - a.z);
+            if (distance < length) {
+              state.x = a.x + ((b.x - a.x) * distance) / length;
+              state.z = a.z + ((b.z - a.z) * distance) / length;
+              state.yaw = Math.atan2(-(b.x - a.x), -(b.z - a.z));
+              state.pose = "stand";
+              state.moving = true;
+              arrived = false;
+              break;
+            }
+            distance -= length;
+          }
+          if (arrived) {
+            const end = route[route.length - 1] ?? join;
+            if (Math.hypot(end.x - state.x, end.z - state.z) > 1) {
+              resident.rejoin = { x: end.x, z: end.z, from: nowMs };
+              state.x = end.x;
+              state.z = end.z;
+              state.moving = false;
+            } else resident.rejoin = null;
           }
         }
+        const shared = openAir?.state();
+        const lease =
+          shared && activeLease(shared, resident.spec.id as ResidentId, nowMs);
+        if (lease) {
+          state.x = lease.x;
+          state.z = lease.z;
+          state.moving = false;
+          state.pose = "stand";
+          if (lease.goal && grid) {
+            const goal = OPEN_AIR_PLACES.find((p) => p.id === lease.goal)!;
+            const routeKey = `${resident.spec.id}:${lease.startedAt ?? lease.at}:${lease.goal}`;
+            let route = escortRoutes.get(routeKey);
+            if (!route) {
+              route = [
+                { x: lease.x, z: lease.z },
+                ...findPath(
+                  grid,
+                  { x: lease.x, z: lease.z },
+                  { x: goal.x, z: goal.z },
+                ),
+              ];
+              escortRoutes.set(routeKey, route);
+              if (escortRoutes.size > 30)
+                escortRoutes.delete(escortRoutes.keys().next().value!);
+            }
+            const owner = openAir?.peer(lease.owner);
+            if (resident.leaseKey !== routeKey) {
+              resident.leaseKey = routeKey;
+              resident.escortDistance = 0;
+              resident.lastUpdate = nowMs;
+            }
+            const delta = Math.min(
+              0.1,
+              Math.max(0, (nowMs - resident.lastUpdate) / 1000),
+            );
+            resident.lastUpdate = nowMs;
+            let distance = resident.escortDistance;
+            const close =
+              owner &&
+              Math.hypot(resident.last.x - owner.x, resident.last.z - owner.z) <
+                4;
+            if (close) distance += delta * 1.8;
+            resident.escortDistance = distance;
+            for (let j = 1; j < route.length; j++) {
+              const a = route[j - 1],
+                b = route[j],
+                length = Math.hypot(b.x - a.x, b.z - a.z);
+              if (distance < length) {
+                state.x = a.x + ((b.x - a.x) * distance) / length;
+                state.z = a.z + ((b.z - a.z) * distance) / length;
+                state.yaw = Math.atan2(-(b.x - a.x), -(b.z - a.z));
+                state.moving = !!close;
+                break;
+              }
+              distance -= length;
+              state.x = b.x;
+              state.z = b.z;
+            }
+          }
+        }
+        if (!lease && resident.leaseActive) {
+          resident.rejoin = {
+            x: resident.last.x,
+            z: resident.last.z,
+            from: nowMs,
+          };
+          resident.leaseKey = null;
+          state.x = resident.last.x;
+          state.z = resident.last.z;
+          state.moving = false;
+        }
+        resident.leaseActive = !!lease;
         return state;
       });
+      // Residents acknowledge world actions where they actually happened.
+      if (openAir) {
+        for (const item of ITEMS) {
+          const saved = openAir.state().objects[item.id];
+          if (!saved || seenObjectActions.get(item.id) === saved.at) continue;
+          seenObjectActions.set(item.id, saved.at);
+          if (nowMs - saved.at > 4000) continue;
+          const p = itemPosition(item, saved, nowMs);
+          const nearest = live
+            .map((r, i) => ({
+              r,
+              d: Math.hypot(states[i].x - p.x, states[i].z - p.z),
+            }))
+            .filter(
+              (v) =>
+                v.d < 6 &&
+                !activeLease(openAir.state(), v.r.spec.id as ResidentId, nowMs),
+            )
+            .sort((a, b) => a.d - b.d)[0]?.r;
+          if (nearest) {
+            nearest.saying = {
+              text: saved.owner
+                ? `You found a ${item.kind}. Try placing or throwing it.`
+                : terrainHeight(p.x, p.z) < -0.8
+                  ? item.kind === "wood" ||
+                    item.kind === "leaf" ||
+                    item.kind === "ball"
+                    ? "Look — it floats!"
+                    : "Nice splash!"
+                  : "That makes a lovely arrangement.",
+              until: nowMs + 3500,
+            };
+            nearest.facePlayerUntil = nowMs + 3500;
+          }
+        }
+      }
       // Keep bodies apart: residents passing each other step aside, nobody
       // stands inside Nagi. Seated residents and Nagi do not move.
-      const points = [...states.map((state) => ({ x: state.x, z: state.z })), ...others.map((o) => ({ ...o }))];
+      const points = [
+        ...states.map((state) => ({ x: state.x, z: state.z })),
+        ...others.map((o) => ({ ...o })),
+      ];
       separate(points, [
-        ...states.map((state, index) => state.pose === "sit" || live[index].held !== null),
+        ...states.map(
+          (state, index) =>
+            state.pose === "sit" ||
+            live[index].held !== null ||
+            !!(
+              openAir &&
+              activeLease(
+                openAir.state(),
+                live[index].spec.id as ResidentId,
+                nowMs,
+              )
+            ),
+        ),
         ...others.map(() => true),
       ]);
       states.forEach((state, index) => {
@@ -326,7 +598,9 @@ export function createResidents(
       });
       // Ambient chatter is a background murmur: only the few nearest
       // residents may show it, so bubbles never pile up across the plaza.
-      const distances = states.map((state) => (eye ? Math.hypot(eye.x - state.x, eye.z - state.z) : Infinity));
+      const distances = states.map((state) =>
+        eye ? Math.hypot(eye.x - state.x, eye.z - state.z) : Infinity,
+      );
       const ambientAllowed = new Set(
         distances
           .map((distance, index) => [distance, index] as const)
@@ -337,7 +611,9 @@ export function createResidents(
       );
       live.forEach((resident, index) => {
         const state = states[index];
-        const toPlayer = eye ? Math.hypot(eye.x - state.x, eye.z - state.z) : Infinity;
+        const toPlayer = eye
+          ? Math.hypot(eye.x - state.x, eye.z - state.z)
+          : Infinity;
 
         // ---- who are they talking to? ----
         let partner: number | null = null;
@@ -355,13 +631,25 @@ export function createResidents(
         if (resident.held) {
           resident.facePlayerUntil = nowMs + 1500;
         }
-        if (eye && !resident.held && toPlayer < 3.2 && nowMs - resident.greetedAt > 45000 && !resident.saying) {
+        if (
+          eye &&
+          !resident.held &&
+          toPlayer < 3.2 &&
+          nowMs - resident.greetedAt > 45000 &&
+          !resident.saying
+        ) {
           const greet = LINES[resident.spec.personality].greet;
           resident.greetedAt = nowMs;
-          resident.saying = { text: greet[Math.floor(hash01(index, Math.floor(seconds)) * greet.length)], until: nowMs + 3800 };
+          resident.saying = {
+            text: greet[
+              Math.floor(hash01(index, Math.floor(seconds)) * greet.length)
+            ],
+            until: nowMs + 3800,
+          };
           resident.facePlayerUntil = nowMs + 4500;
         }
-        if (resident.saying && resident.saying.until < nowMs) resident.saying = null;
+        if (resident.saying && resident.saying.until < nowMs)
+          resident.saying = null;
 
         // ---- what they say (local override > conversation > musing) ----
         let line: string | null = resident.saying?.text ?? null;
@@ -369,10 +657,17 @@ export function createResidents(
         const nearby = ambientAllowed.has(index) && !resident.held;
         if (!line && nearby && partner !== null && state.stayed > 1.5) {
           const turnIndex = Math.floor(seconds / 4.5);
-          const speaker = turnIndex % 2 === 0 ? Math.min(index, partner) : Math.max(index, partner);
-          const groupSeed = state.spot.group!.length * 97 + Math.min(index, partner);
+          const speaker =
+            turnIndex % 2 === 0
+              ? Math.min(index, partner)
+              : Math.max(index, partner);
+          const groupSeed =
+            state.spot.group!.length * 97 + Math.min(index, partner);
           if (speaker === index && seconds - turnIndex * 4.5 < 3.6) {
-            line = CHATTER[Math.floor(hash01(groupSeed, turnIndex) * CHATTER.length)];
+            line =
+              CHATTER[
+                Math.floor(hash01(groupSeed, turnIndex) * CHATTER.length)
+              ];
           }
         } else if (!line && nearby && !state.moving && state.stayed > 3) {
           const window = Math.floor(seconds / 25);
@@ -382,7 +677,8 @@ export function createResidents(
           }
         }
         if (line) {
-          if (resident.bubble.textContent !== line) resident.bubble.textContent = line;
+          if (resident.bubble.textContent !== line)
+            resident.bubble.textContent = line;
           resident.bubble.style.display = "block";
         } else {
           resident.bubble.style.display = "none";
@@ -391,12 +687,23 @@ export function createResidents(
         // ---- facing ----
         let bodyYaw = state.yaw;
         let lookAt: number | null = null;
-        if (eye && nowMs < resident.facePlayerUntil) {
+        const lease =
+          openAir &&
+          activeLease(openAir.state(), resident.spec.id as ResidentId, nowMs);
+        const visitor = lease ? openAir?.peer(lease.owner) : eye;
+        if (visitor && lease && !state.moving) {
+          lookAt = Math.atan2(-(visitor.x - state.x), -(visitor.z - state.z));
+          bodyYaw = lookAt;
+        }
+        if (eye && !lease && nowMs < resident.facePlayerUntil) {
           lookAt = Math.atan2(-(eye.x - state.x), -(eye.z - state.z));
           if (!state.moving && state.pose === "stand") bodyYaw = lookAt;
-        } else if (partner !== null) {
-          lookAt = Math.atan2(-(states[partner].x - state.x), -(states[partner].z - state.z));
-        } else if (eye && toPlayer < 4) {
+        } else if (!lease && partner !== null) {
+          lookAt = Math.atan2(
+            -(states[partner].x - state.x),
+            -(states[partner].z - state.z),
+          );
+        } else if (!lease && eye && toPlayer < 4) {
           lookAt = Math.atan2(-(eye.x - state.x), -(eye.z - state.z));
         }
         if (!resident.placed) {
@@ -409,13 +716,25 @@ export function createResidents(
         const headTarget =
           lookAt === null
             ? 0
-            : Math.max(-1.1, Math.min(1.1, Math.atan2(Math.sin(lookAt - resident.yaw), Math.cos(lookAt - resident.yaw))));
-        resident.headYaw += (headTarget - resident.headYaw) * (reducedMotion ? 1 : 0.1);
+            : Math.max(
+                -1.1,
+                Math.min(
+                  1.1,
+                  Math.atan2(
+                    Math.sin(lookAt - resident.yaw),
+                    Math.cos(lookAt - resident.yaw),
+                  ),
+                ),
+              );
+        resident.headYaw +=
+          (headTarget - resident.headYaw) * (reducedMotion ? 1 : 0.1);
         resident.head.rotation.y = resident.headYaw;
 
         // ---- body ----
         const t = seconds + index * 0.37;
-        let y = state.pose === "sit" ? 0.27 : 0;
+        let y =
+          (state.pose === "sit" ? 0.27 : 0) +
+          landmarkGround(state.x, state.z, terrainHeight(state.x, state.z));
         resident.group.rotation.z = 0;
         if (!reducedMotion) {
           if (state.moving) {
@@ -424,8 +743,114 @@ export function createResidents(
           } else {
             y += Math.sin(t * 1.6) * 0.006;
           }
-          if (line && !state.moving) resident.head.rotation.x = Math.sin(t * 9) * 0.04;
+          if (line && !state.moving)
+            resident.head.rotation.x = Math.sin(t * 9) * 0.04;
           else resident.head.rotation.x = 0;
+        }
+        const phase = worldMoment(nowMs);
+        const activity = state.spot.id;
+        resident.tool.visible =
+          activity.startsWith("job-") &&
+          !state.moving &&
+          !lease &&
+          !["cat", "penguin", "rabbit", "dog"].includes(resident.spec.id);
+        if (resident.tool.visible && !reducedMotion)
+          resident.tool.rotation.x = Math.sin(t * 2) * 0.25;
+        if (
+          !state.moving &&
+          activity.startsWith("job-") &&
+          !lease &&
+          nearby &&
+          !line &&
+          nowMs - resident.activitySeen > 25000
+        ) {
+          const words: Record<string, string> = {
+            "job-rest": "The shade is a good place to slow down.",
+            "job-ball": "There’s a ball nearby. Try throwing it!",
+            "job-driftwood": "Wood floats. Let’s try it at the pier.",
+            "job-apps":
+              "Shared apps appear here. Try one and tell us about it.",
+            "job-dance": "A little dance by the waves!",
+            "job-exercise": "Steps or a jump — both lead up the dune.",
+            "job-repair": "This roof keeps the rain off.",
+            "job-flowers": "The leaves move with the sea breeze.",
+            "job-crabs": "Crouch to watch the crabs without startling them.",
+            "job-shells": "Try making a shell arrangement on the stone tray.",
+          };
+          resident.activitySeen = nowMs;
+          resident.saying = {
+            text: words[activity] ?? "Let’s explore.",
+            until: nowMs + 3800,
+          };
+        }
+        if (
+          !state.moving &&
+          activity.startsWith("job-") &&
+          !lease &&
+          !reducedMotion
+        ) {
+          switch (activity) {
+            case "job-rest":
+              resident.head.rotation.x = 0.18;
+              break;
+            case "job-ball":
+              resident.head.rotation.x = 0.1 + Math.sin(t * 2) * 0.12;
+              resident.group.rotation.z = Math.sin(t * 2) * 0.08;
+              break;
+            case "job-driftwood":
+              resident.group.rotation.z = Math.sin(t) * 0.06;
+              resident.head.rotation.x = 0.16;
+              break;
+            case "job-apps":
+              resident.head.rotation.y += Math.sin(t * 0.8) * 0.2;
+              break;
+            case "job-dance":
+              y += Math.abs(Math.sin(t * 3)) * 0.09;
+              resident.group.rotation.z = Math.sin(t * 3) * 0.18;
+              break;
+            case "job-exercise":
+              y += Math.max(0, Math.sin(t * 2.2)) * 0.35;
+              resident.group.rotation.z = Math.sin(t) * 0.04;
+              break;
+            case "job-repair":
+              resident.head.rotation.x = 0.15 + Math.sin(t * 4) * 0.06;
+              resident.tool.rotation.x = Math.sin(t * 4) * 0.45;
+              break;
+            case "job-flowers":
+              resident.head.rotation.x = 0.25;
+              y -= 0.1;
+              resident.tool.rotation.z = Math.sin(t) * 0.15;
+              break;
+            case "job-crabs":
+              resident.head.rotation.x = 0.32;
+              y -= 0.14;
+              break;
+            case "job-shells":
+              resident.head.rotation.x = 0.22;
+              resident.tool.rotation.x = Math.sin(t * 1.5) * 0.18;
+              break;
+          }
+        }
+        if (!state.moving && !resident.held && !reducedMotion) {
+          if (
+            (resident.spec.id === "cat" && state.pose === "sit") ||
+            phase.phase === "night"
+          )
+            resident.head.rotation.x = 0.18;
+          else if (
+            activity.startsWith("garden") ||
+            activity.startsWith("shore")
+          ) {
+            resident.head.rotation.x = 0.2;
+            y -= 0.08;
+          }
+          if (
+            nowMs < resident.facePlayerUntil &&
+            resident.saying?.text.includes("👋")
+          )
+            resident.group.rotation.z = Math.sin(t * 7) * 0.12;
+          else if (nowMs < resident.facePlayerUntil && resident.saying)
+            resident.head.rotation.x = Math.sin(t * 5) * 0.12;
         }
         resident.group.position.set(state.x, y, state.z);
         resident.last = { x: state.x, z: state.z, pose: state.pose };
@@ -435,8 +860,7 @@ export function createResidents(
         // ---- body you bump into (not while sitting, never trapping you) ----
         resident.collider.x = state.x;
         resident.collider.z = state.z;
-        resident.collider.r =
-          state.pose === "sit" || (eye && toPlayer < 0.62) ? 0 : 0.35;
+        resident.collider.r = state.pose === "sit" ? 0 : 0.35;
       });
     },
 
@@ -445,11 +869,15 @@ export function createResidents(
       if (!resident) return;
       const text = residentReaction(resident.spec.personality, emoji);
       if (!text) return;
-      resident.saying = { text, until: Date.now() + 3500 };
+      resident.saying = { text, until: (openAir?.now() ?? Date.now()) + 3500 };
       if (!resident.held) {
-        resident.reactionPause = { x: resident.last.x, z: resident.last.z, until: Date.now() + 3500 };
+        resident.reactionPause = {
+          x: resident.last.x,
+          z: resident.last.z,
+          until: (openAir?.now() ?? Date.now()) + 3500,
+        };
       }
-      resident.facePlayerUntil = Date.now() + 4000;
+      resident.facePlayerUntil = (openAir?.now() ?? Date.now()) + 4000;
     },
 
     hold(id, on) {
@@ -462,7 +890,11 @@ export function createResidents(
         return;
       }
       if (!resident.held) return;
-      resident.rejoin = { x: resident.held.x, z: resident.held.z, from: Date.now() };
+      resident.rejoin = {
+        x: resident.held.x,
+        z: resident.held.z,
+        from: Date.now(),
+      };
       resident.held = null;
     },
 

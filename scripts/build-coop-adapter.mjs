@@ -86,11 +86,17 @@ for (const name of ["nagi", "residents", "knowledge"]) {
       .replace(/^export \* from .*$/gm, ""),
   );
 }
-await writeFile(resolve(out, "plaza-guide.generated.d.ts"), guideTypes.join("\n"));
+await writeFile(
+  resolve(out, "plaza-guide.generated.d.ts"),
+  guideTypes.join("\n"),
+);
 
 const sources = {};
 for (const path of [
-  ...new Set([...Object.keys(result.metafile.inputs), ...Object.keys(guideResult.metafile.inputs)]),
+  ...new Set([
+    ...Object.keys(result.metafile.inputs),
+    ...Object.keys(guideResult.metafile.inputs),
+  ]),
 ].sort()) {
   sources[path] = createHash("sha256")
     .update(await readFile(path))
@@ -106,7 +112,7 @@ await writeFile(
       artifact_sha256: createHash("sha256")
         .update(await readFile(resolve(out, "plaza.generated.js")))
         .digest("hex"),
-      guide: "plaza.guide@1",
+      guide: "plaza.guide@3",
       guide_artifact_sha256: createHash("sha256")
         .update(await readFile(resolve(out, "plaza-guide.generated.js")))
         .digest("hex"),

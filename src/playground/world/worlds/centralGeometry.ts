@@ -1,5 +1,5 @@
 /** Shared by the renderer and the headless Controller. No scene graph or DOM. */
-import { circle } from "../collision";
+import { box, circle } from "../collision";
 
 export const FOUNTAIN_RADIUS = 3.2;
 export const CENTRAL_TREES = [
@@ -21,7 +21,7 @@ export const CENTRAL_PLANTERS = [
   [0, 13],
 ] as const;
 export const CENTRAL_BENCHES = [
-  [0, 6.6, Math.PI],
+  [4.8, 7.4, Math.PI],
   [6.6, 0, -Math.PI / 2],
   [-6.6, 0, Math.PI / 2],
   [0, -6.6, 0],
@@ -64,8 +64,11 @@ export function centralColliders() {
   return [
     circle(0, 0, FOUNTAIN_RADIUS + 0.1),
     ...CENTRAL_TREES.map(([x, z]) => circle(x, z, 0.5)),
-    ...CENTRAL_PLANTERS.map(([x, z]) => circle(x, z, 1.6)),
-    ...CENTRAL_BENCHES.map(([x, z]) => circle(x, z, 1.5)),
+    ...CENTRAL_PLANTERS.map(([x, z]) => ({ ...circle(x, z, 1.04), top: 0.65 })),
+    ...CENTRAL_BENCHES.map(([x, z, rotation]) => ({
+      ...box(x, z, 3.1, 0.7, rotation),
+      top: 0.78,
+    })),
     ...CENTRAL_LANTERNS.map(([x, z]) => circle(x, z, 0.3)),
     ...CENTRAL_MASCOTS.map(({ x, z }) => circle(x, z, 0.45)),
   ];
@@ -79,3 +82,18 @@ export const CENTRAL_SOFTWARE_SLOTS = [
   { id: "plaza-05", x: 12.4, z: -8.2, rotation: -0.6 },
 ];
 export const EXHIBIT_OBSTACLE_RADIUS = 1.8;
+
+/** Actual movable-world furniture; historical mascot spawn positions are not walls. */
+export function centralFurnitureColliders() {
+  return [
+    ...centralColliders().filter(
+      (c) =>
+        !(c.shape === "circle" && c.x === 0 && c.z === 0) &&
+        !CENTRAL_MASCOTS.some(
+          (m) => c.shape === "circle" && c.x === m.x && c.z === m.z,
+        ),
+    ),
+    { ...circle(0, 0, FOUNTAIN_RADIUS + 0.1), top: 0.6 },
+    circle(0, 0, 1.15),
+  ];
+}

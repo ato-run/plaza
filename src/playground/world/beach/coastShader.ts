@@ -27,6 +27,7 @@ export interface CoastUniforms {
   uCoastExtent: { value: number };
   /** World clock in seconds; the only clock the water and sand read. */
   uTime: { value: number };
+  uTide: { value: number };
 }
 
 export function createCoastUniforms(size: number): CoastUniforms {
@@ -52,6 +53,7 @@ export function createCoastUniforms(size: number): CoastUniforms {
     uCoastField: { value: texture },
     uCoastExtent: { value: field.extent },
     uTime: { value: 0 },
+    uTide: { value: 0 },
   };
 }
 
@@ -60,7 +62,8 @@ uniform sampler2D uCoastField;
 uniform float uCoastExtent;
 uniform float uTime;
 
-#define SEA_LEVEL ${SEA_LEVEL.toFixed(3)}
+uniform float uTide;
+#define SEA_LEVEL (${SEA_LEVEL.toFixed(3)} + uTide)
 #define SWASH_PERIOD ${SWASH_PERIOD.toFixed(1)}
 #define SWASH_RISE 0.3
 #define BORE_TRAVEL 15.0

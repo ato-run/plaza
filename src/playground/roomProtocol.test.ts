@@ -26,11 +26,7 @@ import {
 import { DEFAULT_WORLD_ID } from "./world/types";
 import type { PlaygroundPost, PlaygroundViewer } from "./types";
 
-function opEvent(
-  seq: number,
-  actor: string,
-  op: PlazaOp,
-): AppRoomOpEvent {
+function opEvent(seq: number, actor: string, op: PlazaOp): AppRoomOpEvent {
   return {
     kind: "op",
     seq,
@@ -52,7 +48,13 @@ const VIEWER: PlaygroundViewer = {
   is_guest: false,
 };
 
-function postOp(seq: number, actor: string, id: string, text = "hi", world = DEFAULT_WORLD_ID) {
+function postOp(
+  seq: number,
+  actor: string,
+  id: string,
+  text = "hi",
+  world = DEFAULT_WORLD_ID,
+) {
   return opEvent(seq, actor, {
     t: "post",
     post: {
@@ -69,13 +71,24 @@ function postOp(seq: number, actor: string, id: string, text = "hi", world = DEF
 
 describe("roomOpToEvent", () => {
   it("maps posts, deletes, and reactions onto the durable lane", () => {
-    let state = roomBootstrapToState(createPlaygroundState(), VIEWER, { v: 1, posts: [], cursor: 0 }, 1, DEFAULT_WORLD_ID);
+    let state = roomBootstrapToState(
+      createPlaygroundState(),
+      VIEWER,
+      { v: 1, posts: [], cursor: 0 },
+      1,
+      DEFAULT_WORLD_ID,
+    );
     const feed = (event: AppRoomOpEvent) => {
-      state = bufferEvent(state, roomOpToEvent(event, state.posts, DEFAULT_WORLD_ID));
+      state = bufferEvent(
+        state,
+        roomOpToEvent(event, state.posts, DEFAULT_WORLD_ID),
+      );
     };
 
     feed(postOp(1, "user_alice", "p1"));
-    feed(opEvent(2, "user_bob", { t: "reaction", post_id: "p1", reaction: "❤️" }));
+    feed(
+      opEvent(2, "user_bob", { t: "reaction", post_id: "p1", reaction: "❤️" }),
+    );
     expect(visiblePosts(state).map((p) => p.id)).toEqual(["p1"]);
     expect(state.posts.get("p1")?.reactions).toEqual({ "❤️": 1 });
 
@@ -90,9 +103,18 @@ describe("roomOpToEvent", () => {
   });
 
   it("keeps foreign-World posts out of this World's view", () => {
-    let state = roomBootstrapToState(createPlaygroundState(), VIEWER, { v: 1, posts: [], cursor: 0 }, 1, DEFAULT_WORLD_ID);
+    let state = roomBootstrapToState(
+      createPlaygroundState(),
+      VIEWER,
+      { v: 1, posts: [], cursor: 0 },
+      1,
+      DEFAULT_WORLD_ID,
+    );
     const feed = (event: AppRoomOpEvent) => {
-      state = bufferEvent(state, roomOpToEvent(event, state.posts, DEFAULT_WORLD_ID));
+      state = bufferEvent(
+        state,
+        roomOpToEvent(event, state.posts, DEFAULT_WORLD_ID),
+      );
     };
     feed(postOp(1, "user_alice", "p1", "plaza talk"));
     feed(postOp(2, "user_alice", "p2", "market talk", "market"));
@@ -101,7 +123,13 @@ describe("roomOpToEvent", () => {
   });
 
   it("advances past unknown op shapes instead of wedging the log", () => {
-    let state = roomBootstrapToState(createPlaygroundState(), VIEWER, { v: 1, posts: [], cursor: 0 }, 1, DEFAULT_WORLD_ID);
+    let state = roomBootstrapToState(
+      createPlaygroundState(),
+      VIEWER,
+      { v: 1, posts: [], cursor: 0 },
+      1,
+      DEFAULT_WORLD_ID,
+    );
     state = bufferEvent(
       state,
       roomOpToEvent(
@@ -115,11 +143,21 @@ describe("roomOpToEvent", () => {
   });
 
   it("ignores reactions for unknown posts", () => {
-    let state = roomBootstrapToState(createPlaygroundState(), VIEWER, { v: 1, posts: [], cursor: 0 }, 1, DEFAULT_WORLD_ID);
+    let state = roomBootstrapToState(
+      createPlaygroundState(),
+      VIEWER,
+      { v: 1, posts: [], cursor: 0 },
+      1,
+      DEFAULT_WORLD_ID,
+    );
     state = bufferEvent(
       state,
       roomOpToEvent(
-        opEvent(1, "user_bob", { t: "reaction", post_id: "missing", reaction: "❤️" }),
+        opEvent(1, "user_bob", {
+          t: "reaction",
+          post_id: "missing",
+          reaction: "❤️",
+        }),
         state.posts,
         DEFAULT_WORLD_ID,
       ),
@@ -131,19 +169,40 @@ describe("roomOpToEvent", () => {
 
 describe("seal round-trip", () => {
   it("rebuilds the same conversation from a seal plus suffix", () => {
-    let live = roomBootstrapToState(createPlaygroundState(), VIEWER, { v: 1, posts: [], cursor: 0 }, 2, DEFAULT_WORLD_ID);
+    let live = roomBootstrapToState(
+      createPlaygroundState(),
+      VIEWER,
+      { v: 1, posts: [], cursor: 0 },
+      2,
+      DEFAULT_WORLD_ID,
+    );
     const feed = (event: AppRoomOpEvent) => {
-      live = bufferEvent(live, roomOpToEvent(event, live.posts, DEFAULT_WORLD_ID));
+      live = bufferEvent(
+        live,
+        roomOpToEvent(event, live.posts, DEFAULT_WORLD_ID),
+      );
     };
     feed(postOp(1, "user_alice", "p1", "one"));
     feed(postOp(2, "user_bob", "p2", "two"));
-    feed(opEvent(3, "user_alice", { t: "reaction", post_id: "p2", reaction: "🔥" }));
+    feed(
+      opEvent(3, "user_alice", {
+        t: "reaction",
+        post_id: "p2",
+        reaction: "🔥",
+      }),
+    );
 
     const seal = buildSealPayload(live);
     expect(seal.cursor).toBe(3);
 
     // A fresh client restores from the seal, then replays the suffix.
-    let restored = roomBootstrapToState(createPlaygroundState(), VIEWER, seal, 2, DEFAULT_WORLD_ID);
+    let restored = roomBootstrapToState(
+      createPlaygroundState(),
+      VIEWER,
+      seal,
+      2,
+      DEFAULT_WORLD_ID,
+    );
     expect(visiblePosts(restored).map((p) => p.id)).toEqual(["p1", "p2"]);
     expect(restored.posts.get("p2")?.reactions).toEqual({ "🔥": 1 });
 
@@ -152,9 +211,18 @@ describe("seal round-trip", () => {
   });
 
   it("restores only the current World's sealed posts", () => {
-    let live = roomBootstrapToState(createPlaygroundState(), VIEWER, { v: 1, posts: [], cursor: 0 }, 2, DEFAULT_WORLD_ID);
+    let live = roomBootstrapToState(
+      createPlaygroundState(),
+      VIEWER,
+      { v: 1, posts: [], cursor: 0 },
+      2,
+      DEFAULT_WORLD_ID,
+    );
     const feed = (event: AppRoomOpEvent) => {
-      live = bufferEvent(live, roomOpToEvent(event, live.posts, DEFAULT_WORLD_ID));
+      live = bufferEvent(
+        live,
+        roomOpToEvent(event, live.posts, DEFAULT_WORLD_ID),
+      );
     };
     feed(postOp(1, "user_alice", "p1", "plaza talk"));
     const seal = buildSealPayload(live);
@@ -177,16 +245,41 @@ describe("seal round-trip", () => {
         },
       ],
     };
-    const plazaView = roomBootstrapToState(createPlaygroundState(), VIEWER, mixed, 2, DEFAULT_WORLD_ID);
+    const plazaView = roomBootstrapToState(
+      createPlaygroundState(),
+      VIEWER,
+      mixed,
+      2,
+      DEFAULT_WORLD_ID,
+    );
     expect(visiblePosts(plazaView).map((p) => p.id)).toEqual(["p1"]);
-    const marketView = roomBootstrapToState(createPlaygroundState(), VIEWER, mixed, 2, "market");
+    const marketView = roomBootstrapToState(
+      createPlaygroundState(),
+      VIEWER,
+      mixed,
+      2,
+      "market",
+    );
     expect(visiblePosts(marketView).map((p) => p.id)).toEqual(["pm"]);
   });
 
-  it("starts empty on a missing or corrupt seal", () => {    const state = roomBootstrapToState(createPlaygroundState(), VIEWER, null, 0, DEFAULT_WORLD_ID);
+  it("starts empty on a missing or corrupt seal", () => {
+    const state = roomBootstrapToState(
+      createPlaygroundState(),
+      VIEWER,
+      null,
+      0,
+      DEFAULT_WORLD_ID,
+    );
     expect(visiblePosts(state)).toEqual([]);
     expect(state.cursor).toBe(0);
-    const corrupt = roomBootstrapToState(createPlaygroundState(), VIEWER, { v: 2 }, 0, DEFAULT_WORLD_ID);
+    const corrupt = roomBootstrapToState(
+      createPlaygroundState(),
+      VIEWER,
+      { v: 2 },
+      0,
+      DEFAULT_WORLD_ID,
+    );
     expect(visiblePosts(corrupt)).toEqual([]);
   });
 
@@ -204,11 +297,23 @@ describe("seal round-trip", () => {
         viewer_reactions: [],
       },
     ];
-    let state = roomBootstrapToState(createPlaygroundState(), VIEWER, { v: 1, posts, cursor: 1 }, 1, DEFAULT_WORLD_ID);
+    let state = roomBootstrapToState(
+      createPlaygroundState(),
+      VIEWER,
+      { v: 1, posts, cursor: 1 },
+      1,
+      DEFAULT_WORLD_ID,
+    );
     const muted = new Set(state.mutedUserIds);
     muted.add("user_bob");
     state = { ...state, mutedUserIds: muted };
-    const again = roomBootstrapToState(state, VIEWER, { v: 1, posts, cursor: 1 }, 1, DEFAULT_WORLD_ID);
+    const again = roomBootstrapToState(
+      state,
+      VIEWER,
+      { v: 1, posts, cursor: 1 },
+      1,
+      DEFAULT_WORLD_ID,
+    );
     expect(visiblePosts(again)).toEqual([]);
   });
 });
@@ -231,7 +336,9 @@ describe("viewerFromHello", () => {
     expect(viewerFromHello({ ...base, role: "owner" }).can_post).toBe(true);
     expect(viewerFromHello({ ...base, role: "editor" }).can_post).toBe(true);
     expect(viewerFromHello({ ...base, role: "viewer" }).can_post).toBe(false);
-    expect(viewerFromHello({ ...base, role: "viewer", open_posting: true }).can_post).toBe(true);
+    expect(
+      viewerFromHello({ ...base, role: "viewer", open_posting: true }).can_post,
+    ).toBe(true);
   });
 
   it("marks invite guests as guests", () => {
@@ -279,7 +386,12 @@ describe("worldOfParticipant", () => {
       worldOfParticipant(
         {
           ...participant,
-          ephemeral: { kind: "plaza.transform", scope: "nope", payload: {}, expires_at: Date.now() + 4000 },
+          ephemeral: {
+            kind: "plaza.transform",
+            scope: "nope",
+            payload: {},
+            expires_at: Date.now() + 4000,
+          },
         },
         DEFAULT_WORLD_ID,
       ),
@@ -288,10 +400,58 @@ describe("worldOfParticipant", () => {
       worldOfParticipant(
         {
           ...participant,
-          ephemeral: { kind: "plaza.transform", scope: "market", payload: {}, expires_at: Date.now() - 1 },
+          ephemeral: {
+            kind: "plaza.transform",
+            scope: "market",
+            payload: {},
+            expires_at: Date.now() - 1,
+          },
         },
         DEFAULT_WORLD_ID,
       ),
     ).toBe(DEFAULT_WORLD_ID);
+  });
+});
+
+describe("all-world checkpoint projection", () => {
+  it("preserves a foreign-world post in a seal while the current view filters it out", () => {
+    const foreign = opEvent(1, "Alice", {
+      t: "post",
+      post: {
+        id: "foreign",
+        world: "market",
+        kind: "text",
+        text: "Keep this",
+        app_ref: null,
+        activity_ref: null,
+        created_at: "2026-10-08T00:00:00.000Z",
+      },
+    });
+    const global = applyEventsPage(
+      roomBootstrapToState(
+        createPlaygroundState(),
+        VIEWER,
+        { v: 1, posts: [], cursor: 0 },
+        0,
+        null,
+      ),
+      [roomOpToEvent(foreign, new Map(), null)],
+      1,
+    );
+    const seal = buildSealPayload(global);
+    expect(seal.posts).toHaveLength(1);
+    expect(
+      roomBootstrapToState(
+        createPlaygroundState(),
+        VIEWER,
+        seal,
+        0,
+        DEFAULT_WORLD_ID,
+      ).posts.size,
+    ).toBe(0);
+    expect(
+      roomBootstrapToState(createPlaygroundState(), VIEWER, seal, 0, null).posts
+        .size,
+    ).toBe(1);
   });
 });

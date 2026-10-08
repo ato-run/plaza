@@ -67,8 +67,9 @@ describe("coast", () => {
     expect(beachWalkable(0, z - 3)).toBe(false);
   });
 
-  it("keeps walking inside the transform limits and off the dunes", () => {
+  it("keeps walking inside the transform limits and the visible perimeter", () => {
     expect(beachWalkable(63, -20)).toBe(false);
-    expect(beachWalkable(0, 45)).toBe(false);
+    expect(beachWalkable(0, 45)).toBe(true);
+    expect(beachWalkable(0, 56)).toBe(false);
   });
 });

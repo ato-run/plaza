@@ -61,9 +61,11 @@ export function blockingColliders(
   colliders: readonly Collider[],
   feetY: number,
 ): readonly Collider[] {
-  if (!colliders.some((collider) => collider.top !== undefined)) return colliders;
+  if (!colliders.some((collider) => collider.top !== undefined))
+    return colliders;
   return colliders.filter(
-    (collider) => collider.top === undefined || feetY < collider.top - STAND_TOLERANCE,
+    (collider) =>
+      collider.top === undefined || feetY < collider.top - STAND_TOLERANCE,
   );
 }
 
@@ -148,9 +150,31 @@ export function resolveMovement(
   walkable?: (x: number, z: number) => boolean,
 ): { x: number; z: number } {
   let { x, z } = from;
+  // A moving resident may enter the body between frames. Restore separation
+  // before applying input, so neither body becomes an inescapable wall.
+  for (const c of colliders) {
+    if (c.shape === "circle" && overlaps(c, x, z, bodyRadius)) {
+      let dx = x - c.x,
+        dz = z - c.z,
+        length = Math.hypot(dx, dz);
+      if (length < 0.0001) {
+        dx = 0;
+        dz = 1;
+        length = 1;
+      }
+      const push = c.r + bodyRadius - length + 0.001;
+      const nx = x + (dx / length) * push,
+        nz = z + (dz / length) * push;
+      if (!walkable || walkable(nx, nz)) {
+        x = nx;
+        z = nz;
+      }
+    }
+  }
   const valid = (px: number, pz: number) =>
     walkable
-      ? walkable(px, pz) && isPositionValid(px, pz, colliders, bodyRadius, Infinity)
+      ? walkable(px, pz) &&
+        isPositionValid(px, pz, colliders, bodyRadius, Infinity)
       : isPositionValid(px, pz, colliders, bodyRadius, worldRadius);
   if (valid(x + velocity.vx, z)) {
     x += velocity.vx;

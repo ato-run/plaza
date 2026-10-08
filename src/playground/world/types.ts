@@ -45,7 +45,8 @@ export const DEFAULT_WORLD_ID: WorldId = "central-plaza";
 
 export function isWorldId(value: unknown): value is WorldId {
   return (
-    typeof value === "string" && (WORLD_IDS as readonly string[]).includes(value)
+    typeof value === "string" &&
+    (WORLD_IDS as readonly string[]).includes(value)
   );
 }
 
@@ -58,7 +59,10 @@ export function isWorldId(value: unknown): value is WorldId {
  * that check, so the only useful thing left is to render the person somewhere
  * rather than drop them on the floor.
  */
-export function worldIdOr(value: unknown, fallback: WorldId = DEFAULT_WORLD_ID): WorldId {
+export function worldIdOr(
+  value: unknown,
+  fallback: WorldId = DEFAULT_WORLD_ID,
+): WorldId {
   return isWorldId(value) ? value : fallback;
 }
 
@@ -149,7 +153,7 @@ export interface WorldLighting {
  * because aiming at the middle of a person is what a player expects to work.
  */
 export interface Interactable {
-  kind: "software" | "mascot" | "seat" | "guide";
+  kind: "software" | "mascot" | "seat" | "guide" | "object";
   /** Stable within a World; used as the target-change key. */
   id: string;
   title: string;
@@ -237,7 +241,11 @@ export interface WorldRuntime {
   /** The World's guide, if it has one: the page speaks through her. */
   guide?: { say(text: string, durationMs?: number): void };
   /** The World's residents: keep one in place while the viewer talks to them. */
-  neighbors?: { hold(id: string, on: boolean): void; react(id: string, emoji: string): void };
+  neighbors?: {
+    hold(id: string, on: boolean): void;
+    react(id: string, emoji: string): void;
+  };
+  openAir?: import("./openAir/scene").OpenAirRuntime;
   dispose(): void;
 }
 
