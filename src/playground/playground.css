@@ -17,7 +17,12 @@
   inset: 0;
   overflow: hidden;
   font-family:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Noto Sans JP", sans-serif;
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    "Noto Sans JP",
+    sans-serif;
   color: #213e36;
   background: #adc8c8;
   /* Phones with a notch: keep the HUD out from under it. */
@@ -508,7 +513,6 @@ kbd {
   .pg-interaction kbd {
     display: none;
   }
-
 }
 
 @media (max-width: 650px) {
@@ -1036,12 +1040,153 @@ kbd {
 }
 
 @keyframes pg-guide-dots {
-  from { width: 0; }
-  to { width: 1.2em; }
+  from {
+    width: 0;
+  }
+  to {
+    width: 1.2em;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .pg-guide-thinking span {
     animation: none;
+  }
+}
+
+/* Labels have a preferred width: prevent shrink-to-fit word-by-word bubbles. */
+.pg-label {
+  width: max-content;
+  max-width: calc(100% - 16px);
+}
+.pg-speech {
+  width: max-content;
+  min-width: min(170px, calc(100vw - 32px));
+  max-width: min(260px, calc(100vw - 32px));
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  max-height: 180px;
+  overflow: auto;
+}
+.pg-explore-note {
+  position: absolute;
+  left: 50%;
+  bottom: 100px;
+  transform: translateX(-50%);
+  max-width: min(520px, calc(100% - 32px));
+  padding: 10px 16px;
+  background: rgba(24, 53, 47, 0.9);
+  color: #fff3da;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  pointer-events: none;
+}
+.pg-explore-tools {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  max-width: 70%;
+}
+.pg-explore-tools button,
+.pg-explore-tools span {
+  border: 0;
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: rgba(255, 248, 230, 0.94);
+  color: #243b33;
+}
+.pg-journal {
+  position: absolute;
+  right: 16px;
+  top: 70px;
+  max-width: 310px;
+  max-height: 60%;
+  overflow: auto;
+  padding: 16px;
+  background: #fff6e3;
+  border-radius: 16px;
+  color: #243b33;
+  font-size: 13px;
+}
+.pg-journal header {
+  display: flex;
+  justify-content: space-between;
+  gap: 30px;
+}
+.pg-journal button {
+  background: transparent;
+  border: 0;
+}
+.pg-view-settings {
+  display: grid;
+  gap: 14px;
+  margin: 16px 0;
+}
+.pg-view-settings label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.pg-escort {
+  margin: 12px 0;
+  font-size: 13px;
+}
+.pg-guide-memory {
+  font-size: 12px;
+  color: #587065;
+}
+.pg-reaction-toggle {
+  display: none;
+}
+@media (max-width: 600px) {
+  .pg-reaction-toggle {
+    display: block;
+    border: 0;
+    background: transparent;
+    font-size: 25px;
+    padding: 8px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .pg-reactions {
+    display: none;
+  }
+  .pg-reactions--open {
+    display: flex;
+    position: absolute;
+    bottom: 64px;
+    right: 0;
+    background: #fff8e8;
+    border-radius: 22px;
+    padding: 8px;
+  }
+  .pg-talk {
+    position: relative;
+  }
+  .pg-explore-tools {
+    top: 80px;
+    right: 12px;
+    max-width: calc(100% - 24px);
+    font-size: 12px;
+  }
+  .pg-explore-note {
+    bottom: 155px;
+    font-size: 12px;
+  }
+  .pg-speech {
+    min-width: 160px;
+    max-width: 220px;
+    max-height: 120px;
+  }
+  .pg-guide {
+    max-height: 70%;
+    overflow: auto;
   }
 }

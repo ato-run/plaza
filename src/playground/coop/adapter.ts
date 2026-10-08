@@ -1,3 +1,8 @@
+import {
+  isOpenAirAction,
+  applyOpenAir,
+  restoreOpenAir,
+} from "../world/openAir/model";
 import { circle, isPositionValid, resolveMovement } from "../world/collision";
 import { EYE_HEIGHT, WALK_SPEED, sanitizeTransform } from "../world/worldMath";
 import {
@@ -106,6 +111,26 @@ export function validateDurable(
     return null;
   }
   if (context.actor) return "plaza_operation_denied";
+  if (v.t === "openair") {
+    if (!isOpenAirAction(v.action)) return "plaza_invalid_openair";
+    const action = v.action;
+    if (action.kind !== "release" && action.kind !== "stand") {
+      const own = context.peers.find(
+        (peer) => peer.principal_id === context.principalId,
+      );
+      const pose = own && sanitizeTransform(own.pose);
+      if (
+        !own ||
+        own.scope !== WORLD ||
+        context.now - own.observed_at > 5000 ||
+        !pose
+      )
+        return "plaza_presence_required";
+      if (Math.hypot(pose.x - action.x, pose.z - action.z) > 4.5)
+        return "plaza_out_of_reach";
+    }
+    return null;
+  }
   if (v.t === "post.deleted")
     return typeof v.post_id === "string" ? null : "plaza_invalid_post";
   if (v.t === "reaction" || v.t === "unreaction") {
@@ -461,4 +486,92 @@ export function movementStep(
     movement:
       Math.hypot(next.x - from.x, next.z - from.z) > 0.001 ? "walk" : "idle",
   };
+}
+
+/** Shared object/occupancy checkpoints are rebuilt from committed room evidence. */
+export function reduceRoomState(
+  value: unknown,
+  event: { seq: number; actor_id: string; committed_at: number; op: unknown },
+): unknown {
+  const op = object(event.op);
+  return applyOpenAir(
+    restoreOpenAir(value),
+    event.seq,
+    event.actor_id,
+    event.committed_at,
+    op?.t === "openair" ? op.action : null,
+  );
+}
+export function materializeCheckpoint(
+  payload: unknown,
+  value: unknown,
+): unknown {
+  const seal = object(payload);
+  return seal ? { ...seal, open_air: restoreOpenAir(value) } : payload;
+}
+
+/** Public world-event memory only; never room chat or another visitor's encounter. */
+export function recentRoomEncounters(
+  value: unknown,
+  principal: string,
+  npc: string,
+  now: number,
+): string[] {
+  return (restoreOpenAir(value).encounters[principal] ?? [])
+    .filter((e) => e.id === npc && now >= e.at && now - e.at < 900000)
+    .slice(-4)
+    .map((e) => e.kind);
+}
+/** A conservative list of real displays; incomplete history never implies a gallery. */
+export function roomPublicDisplayRefs(value: unknown): {
+  appRefs: string[];
+  activityRefs: string[];
+} {
+  const boot = object(value),
+    payload = object(boot?.checkpoint_payload);
+  const posts = new Map<string, Record<string, unknown>>();
+  const add = (v: unknown) => {
+    const p = object(v);
+    if (p && typeof p.id === "string" && p.world === WORLD) posts.set(p.id, p);
+  };
+  if (Array.isArray(payload?.posts)) payload.posts.forEach(add);
+  let cursor =
+    typeof boot?.checkpoint === "object" && boot.checkpoint
+      ? Number(object(boot.checkpoint)?.base_cursor ?? 0)
+      : 0;
+  const events = Array.isArray(boot?.events) ? boot.events : [];
+  for (const raw of events) {
+    const event = object(raw);
+    if (!event || typeof event.seq !== "number" || event.seq <= cursor)
+      continue;
+    if (event.seq !== cursor + 1) return { appRefs: [], activityRefs: [] };
+    cursor = event.seq;
+    if (event.state_schema_id !== "plaza.room@1") continue;
+    const op = object(event.op);
+    if (op?.t === "post") {
+      const post = object(op.post);
+      if (post && typeof post.id === "string" && !posts.has(post.id))
+        add({ ...post, author_user_id: event.actor_id });
+    }
+    if (
+      op?.t === "post.deleted" &&
+      typeof op.post_id === "string" &&
+      posts.get(op.post_id)?.author_user_id === event.actor_id
+    )
+      posts.delete(op.post_id);
+  }
+  if (
+    typeof boot?.high_water_cursor === "number" &&
+    cursor < boot.high_water_cursor
+  )
+    return { appRefs: [], activityRefs: [] };
+  const collect = (key: string) =>
+    [
+      ...new Set(
+        [...posts.values()]
+          .map((p) => p[key])
+          .filter((v): v is string => typeof v === "string" && v.length <= 200),
+      ),
+    ].slice(0, 50);
+  return { appRefs: collect("app_ref"), activityRefs: collect("activity_ref") };
 }

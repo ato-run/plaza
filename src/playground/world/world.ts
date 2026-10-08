@@ -1,3 +1,12 @@
+import {
+  emptyOpenAir,
+  type OpenAirAction,
+  type OpenAirState,
+  type ResidentId,
+} from "./openAir/model";
+import type { ExploreStatus } from "./openAir/scene";
+import type { ExploreSettings } from "./openAir/settings";
+import { worldMoment } from "./openAir/clock";
 /**
  * `startWorld()` — the seam between React, the transport, and the engine.
  *
@@ -31,7 +40,12 @@ import {
   type Exhibit,
   type ExhibitCard,
 } from "./exhibit";
-import { isConversationTarget, resolveTarget, targetKey, type WorldTarget } from "./interaction";
+import {
+  isConversationTarget,
+  resolveTarget,
+  targetKey,
+  type WorldTarget,
+} from "./interaction";
 import { circle, type Collider } from "./collision";
 import { DEFAULT_WORLD_ID, type Pose, type WorldId } from "./types";
 import { resolveOpenableWorld, worldDefinition } from "./worlds";
@@ -63,6 +77,7 @@ export interface WorldHooks {
   onInteract(target: WorldTarget): void;
   onFaceReaction(targetPrincipalId: string, emoji: string): void;
   onWorldChange(worldId: WorldId): void;
+  onOpenAirAction?(action: OpenAirAction): void;
   onError(message: string): void;
 }
 
@@ -70,7 +85,23 @@ export interface WorldHandle {
   dispose(): void;
   requestPointerLock(): void;
   setPaused(paused: boolean): void;
-  setPresence(members: Iterable<PresenceMember>, selfPrincipalId: string | null): void;
+  setSettings(settings: ExploreSettings): void;
+  setOpenAir(
+    state: OpenAirState,
+    self: string,
+    clockOffset: number,
+    connected: boolean,
+  ): void;
+  exploreStatus(): ExploreStatus;
+  useHeld(throwing: boolean): void;
+  deliver(): void;
+  escort(id: ResidentId, goal: "pools" | "camp" | "pier" | "lookout"): void;
+  residentPosition(id: string): { x: number; z: number } | null;
+  setPeerAliases(aliases: ReadonlyMap<string, string>): void;
+  setPresence(
+    members: Iterable<PresenceMember>,
+    selfPrincipalId: string | null,
+  ): void;
   setExhibits(cards: readonly ExhibitCard[]): void;
   /** Fire a reaction at whatever is currently centred. */
   reactAtTarget(emoji: string): void;
@@ -105,10 +136,15 @@ const FACE_REACTION_EMOJI = new Set(["👋", "❤️", "😂", "👍"]);
 function targetLocalId(target: WorldTarget): string {
   if (target.kind === "mascot") return target.mascotId;
   if (target.kind === "seat") return target.seatId;
+  if (target.kind === "object") return target.objectId;
   return "";
 }
 
-export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle {
+export function startWorld(
+  host: HTMLDivElement,
+  hooks: WorldHooks,
+): WorldHandle {
+  let peerAliases: ReadonlyMap<string, string> = new Map();
   const avatars = new Map<string, Avatar>();
   const exhibits: Exhibit[] = [];
   let exhibitColliders: Collider[] = [];
@@ -118,6 +154,20 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
   let worldId: WorldId = DEFAULT_WORLD_ID;
   let exhibitRoot: THREE.Group | null = null;
   let cards: readonly ExhibitCard[] = [];
+  let shared = emptyOpenAir(),
+    own = "",
+    clockOffset = 0,
+    sharedConnected = false;
+  const selectionGeo = new THREE.RingGeometry(0.36, 0.4, 32);
+  const selectionMat = new THREE.MeshBasicMaterial({
+    color: "#f0dca8",
+    transparent: true,
+    opacity: 0.8,
+    depthWrite: false,
+  });
+  const selection = new THREE.Mesh(selectionGeo, selectionMat);
+  selection.rotation.x = -Math.PI / 2;
+  selection.visible = false;
   // Seats own the pose when active (future): a seated reporter is rendered by
   // pose, not by position. Until a World offers one, the engine's locomotion
   // pose (stand/crouch) is the report.
@@ -144,11 +194,13 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
   function rebuildExhibits(): void {
     for (const exhibit of exhibits) exhibit.dispose();
     exhibits.length = 0;
+    const previousColliders = exhibitColliders;
     exhibitColliders = [];
 
     const runtime = engine.world;
     const slots = runtime?.softwareSlots ?? [];
     if (!runtime || slots.length === 0) return;
+    runtime.openAir?.setExhibitCount(cards.length);
 
     if (!exhibitRoot) {
       exhibitRoot = new THREE.Group();
@@ -167,7 +219,7 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
     });
     // Colliders are the World's plus the exhibits standing in its slots.
     runtime.colliders = runtime.colliders
-      .filter((collider) => !exhibitColliders.includes(collider))
+      .filter((collider) => !previousColliders.includes(collider))
       .concat(exhibitColliders);
   }
 
@@ -187,11 +239,28 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
     currentTarget = null;
     lastTargetKey = "";
     rebuildExhibits();
+    engine.world?.openAir?.bind(
+      (action) => hooks.onOpenAirAction?.(action),
+      () => hooks.onRequestChat(),
+    );
+    engine.world?.openAir?.setState(shared, own, clockOffset, sharedConnected);
+    engine.scene.add(selection);
     hooks.onWorldChange(worldId);
   }
 
   engine.onFrame(({ now, dt, movement, pose, forward }) => {
     pulseWaypoint(now);
+    const peerPositions = new Map(
+      [...avatars.values()].map((a) => [
+        a.principalId,
+        { x: a.group.position.x, z: a.group.position.z },
+      ]),
+    );
+    for (const [social, actor] of peerAliases) {
+      const p = peerPositions.get(actor);
+      if (p) peerPositions.set(social, p);
+    }
+    engine.world?.openAir?.setPeers(peerPositions);
     if (engine.cadenceDue(now)) {
       hooks.onTransform({
         world_id: worldId,
@@ -226,6 +295,30 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
       people,
       engine.world?.interactables ?? [],
     );
+    selection.visible =
+      currentTarget?.kind === "mascot" ||
+      currentTarget?.kind === "guide" ||
+      currentTarget?.kind === "person";
+    if (selection.visible) {
+      const anchor =
+        currentTarget?.kind === "person"
+          ? avatars.get(currentTarget.principalId)?.group.position
+          : engine.world?.interactables.find(
+              (i) =>
+                i.id ===
+                (currentTarget?.kind === "mascot"
+                  ? currentTarget.mascotId
+                  : currentTarget?.kind === "guide"
+                    ? currentTarget.guideId
+                    : ""),
+            )?.anchor;
+      if (anchor)
+        selection.position.set(
+          anchor.x,
+          (engine.world?.groundY?.(anchor.x, anchor.z) ?? 0) + 0.035,
+          anchor.z,
+        );
+    }
     const key = targetKey(currentTarget);
     if (key !== lastTargetKey) {
       lastTargetKey = key;
@@ -259,9 +352,15 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
     const left =
       halfWidth * 2 + margin * 2 >= width
         ? width / 2
-        : Math.min(Math.max(placed.left, halfWidth + margin), width - halfWidth - margin);
+        : Math.min(
+            Math.max(placed.left, halfWidth + margin),
+            width - halfWidth - margin,
+          );
     // The label hangs above its anchor (translate -100%); keep its top edge in.
-    const top = Math.max(placed.top, element.offsetHeight + margin);
+    const top = Math.min(
+      host.clientHeight - margin,
+      Math.max(placed.top, element.offsetHeight + margin),
+    );
     style.left = `${left}px`;
     style.top = `${top}px`;
     // Near speakers read clearly; distant ones fade rather than clutter.
@@ -321,7 +420,11 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
   const handle: WorldHandle = {
     dispose() {
       clearWaypoint();
-      for (const avatar of avatars.values()) disposeAvatar(engine.scene, avatar);
+      selection.removeFromParent();
+      selectionGeo.dispose();
+      selectionMat.dispose();
+      for (const avatar of avatars.values())
+        disposeAvatar(engine.scene, avatar);
       avatars.clear();
       for (const exhibit of exhibits) exhibit.dispose();
       exhibits.length = 0;
@@ -332,6 +435,45 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
 
     requestPointerLock: () => engine.requestPointerLock(),
     setPaused: (paused) => engine.setPaused(paused),
+    setSettings: (settings) => engine.setSettings(settings),
+    setOpenAir(state, self, offset, connected) {
+      const previous = shared;
+      shared = state;
+      own = self;
+      clockOffset = offset;
+      sharedConnected = connected;
+      engine.world?.openAir?.setState(state, self, offset, connected);
+      for (const [actor, entries] of Object.entries(state.encounters)) {
+        const old = previous.encounters[actor]?.at(-1)?.at ?? 0;
+        for (const entry of entries)
+          if (
+            entry.at > old &&
+            entry.emoji &&
+            Date.now() + offset - entry.at < 3500
+          )
+            engine.world?.neighbors?.react(entry.id, entry.emoji);
+      }
+    },
+    exploreStatus: () =>
+      engine.world?.openAir?.status() ?? {
+        held: null,
+        notice: "",
+        place: "",
+        moment: worldMoment(Date.now()),
+        memories: [],
+        observations: [],
+        connected: false,
+        seated: null,
+      },
+    useHeld: (throwing) => engine.world?.openAir?.useHeld(throwing),
+    deliver: () => engine.world?.openAir?.deliver(),
+    escort: (id, goal) => engine.world?.openAir?.escort(id, goal),
+    residentPosition: (id) => {
+      const anchor = engine.world?.interactables.find(
+        (i) => i.id === id,
+      )?.anchor;
+      return anchor ? { x: anchor.x, z: anchor.z } : null;
+    },
     setJoystick: (x, y) => engine.setJoystick(x, y),
     jump: () => engine.jump(),
     setCrouching: (crouching) => engine.setCrouching(crouching),
@@ -343,12 +485,16 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
       mountWorld(next);
     },
 
+    setPeerAliases(aliases) {
+      peerAliases = new Map(aliases);
+    },
     setPresence(members, selfId) {
       selfPrincipalId = selfId;
       const seen = new Set<string>();
       for (const member of members) {
         // The local player is first-person: never draw their own body.
-        if (selfPrincipalId && member.principal_id === selfPrincipalId) continue;
+        if (selfPrincipalId && member.principal_id === selfPrincipalId)
+          continue;
         seen.add(member.principal_id);
         let avatar = avatars.get(member.principal_id);
         if (!avatar) {
@@ -363,7 +509,8 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
         const label = member.animal_emoji
           ? `${member.animal_emoji} ${member.display_name}`
           : member.display_name;
-        if (avatar.nameTag.textContent !== label) avatar.nameTag.textContent = label;
+        if (avatar.nameTag.textContent !== label)
+          avatar.nameTag.textContent = label;
         if (member.transform) receiveTransform(avatar, member.transform);
         avatar.bubble.textContent = member.speech?.text ?? "";
         avatar.bubble.style.display = member.speech ? "block" : "none";
@@ -387,7 +534,13 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
     },
 
     holdNeighbor(id, on) {
-      engine.world?.neighbors?.hold(id, on);
+      const point = handle.residentPosition(id);
+      if (!point) return;
+      hooks.onOpenAirAction?.(
+        on
+          ? { kind: "lease", id: id as ResidentId, x: point.x, z: point.z }
+          : { kind: "release", id: id as ResidentId },
+      );
     },
 
     setWaypoint(point) {
@@ -409,7 +562,11 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
     peopleNear(radius) {
       let count = 0;
       for (const avatar of avatars.values()) {
-        if (avatar.group.position.distanceTo(engine.camera.position) < radius + 1.65) count += 1;
+        if (
+          avatar.group.position.distanceTo(engine.camera.position) <
+          radius + 1.65
+        )
+          count += 1;
       }
       return count;
     },
@@ -417,10 +574,26 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
     reactAtTarget(emoji) {
       if (!FACE_REACTION_EMOJI.has(emoji)) return;
       if (currentTarget?.kind === "mascot" || currentTarget?.kind === "guide") {
+        const id =
+          currentTarget.kind === "mascot"
+            ? currentTarget.mascotId
+            : currentTarget.guideId;
+        const p = handle.residentPosition(id);
+        if (p)
+          hooks.onOpenAirAction?.({
+            kind: "react",
+            id: id as ResidentId,
+            emoji,
+            x: p.x,
+            z: p.z,
+          });
         if (currentTarget.kind === "mascot") {
           engine.world?.neighbors?.react(currentTarget.mascotId, emoji);
         } else {
-          engine.world?.guide?.say(`${emoji} Thank you! It's lovely to see you.`, 3500);
+          engine.world?.guide?.say(
+            `${emoji} Thank you! It's lovely to see you.`,
+            3500,
+          );
         }
         return;
       }

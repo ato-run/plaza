@@ -98,7 +98,11 @@ describe("resolveMovement", () => {
   });
 
   it("lets unobstructed movement through untouched", () => {
-    const next = resolveMovement({ x: 0, z: 5 }, { vx: 0.3, vz: 0.4 }, obstacles);
+    const next = resolveMovement(
+      { x: 0, z: 5 },
+      { vx: 0.3, vz: 0.4 },
+      obstacles,
+    );
     expect(next.x).toBeCloseTo(0.3, 6);
     expect(next.z).toBeCloseTo(5.4, 6);
   });
@@ -142,16 +146,12 @@ describe("chooseTarget", () => {
   const forward = { x: 0, y: 0, z: -1 };
 
   it("picks what is centred, not what is closest", () => {
-    const chosen = chooseTarget(
-      eye,
-      forward,
-      [
-        // Near, but far off to the side.
-        { item: "beside", position: { x: 1.5, y: 1.65, z: -0.2 } },
-        // Further away, but dead ahead.
-        { item: "ahead", position: { x: 0, y: 1.65, z: -3 } },
-      ],
-    );
+    const chosen = chooseTarget(eye, forward, [
+      // Near, but far off to the side.
+      { item: "beside", position: { x: 1.5, y: 1.65, z: -0.2 } },
+      // Further away, but dead ahead.
+      { item: "ahead", position: { x: 0, y: 1.65, z: -3 } },
+    ]);
     expect(chosen).toBe("ahead");
   });
 
@@ -213,8 +213,12 @@ describe("sanitizeTransform", () => {
 
   it("rejects NaN and Infinity rather than poisoning the scene", () => {
     expect(sanitizeTransform({ ...valid, x: Number.NaN })).toBeNull();
-    expect(sanitizeTransform({ ...valid, z: Number.POSITIVE_INFINITY })).toBeNull();
-    expect(sanitizeTransform({ ...valid, yaw: Number.NEGATIVE_INFINITY })).toBeNull();
+    expect(
+      sanitizeTransform({ ...valid, z: Number.POSITIVE_INFINITY }),
+    ).toBeNull();
+    expect(
+      sanitizeTransform({ ...valid, yaw: Number.NEGATIVE_INFINITY }),
+    ).toBeNull();
   });
 
   it("rejects absurd coordinates a hostile client could send", () => {
@@ -223,7 +227,10 @@ describe("sanitizeTransform", () => {
   });
 
   it("clamps pitch instead of rejecting it", () => {
-    expect(sanitizeTransform({ ...valid, pitch: 99 })?.pitch).toBeCloseTo(1.2, 6);
+    expect(sanitizeTransform({ ...valid, pitch: 99 })?.pitch).toBeCloseTo(
+      1.2,
+      6,
+    );
   });
 
   it("treats an unknown movement state as idle", () => {
@@ -253,7 +260,7 @@ describe("crouch eye height", () => {
   it("lowers the first-person eye when crouching", () => {
     expect(eyeHeightForPose("crouch")).toBeCloseTo(CROUCH_EYE_HEIGHT, 6);
     expect(eyeHeightForPose("stand")).toBeCloseTo(EYE_HEIGHT, 6);
-    expect(eyeHeightForPose("sit")).toBeCloseTo(EYE_HEIGHT, 6);
+    expect(eyeHeightForPose("sit")).toBeCloseTo(EYE_HEIGHT - 0.42, 6);
     expect(CROUCH_EYE_HEIGHT).toBeLessThan(EYE_HEIGHT);
   });
 
@@ -261,6 +268,7 @@ describe("crouch eye height", () => {
     const cameraY = 1.05;
     expect(reportEyeY(cameraY, "crouch")).toBeCloseTo(EYE_HEIGHT, 6);
     expect(reportEyeY(EYE_HEIGHT, "stand")).toBeCloseTo(EYE_HEIGHT, 6);
+    expect(reportEyeY(EYE_HEIGHT - 0.42, "sit")).toBeCloseTo(EYE_HEIGHT, 6);
   });
 });
 

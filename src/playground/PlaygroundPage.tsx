@@ -1,3 +1,17 @@
+import { PLAZA_ROOM_SCHEMA_ID } from "./roomProtocol";
+import { ExploreControls } from "./ExploreControls";
+import {
+  emptyOpenAir,
+  applyOpenAir,
+  restoreOpenAir,
+  activeLease,
+  heldItem,
+  type OpenAirAction,
+  type OpenAirState,
+  type ResidentId,
+} from "./world/openAir/model";
+import { readSettings, type ExploreSettings } from "./world/openAir/settings";
+import type { ExploreStatus } from "./world/openAir/scene";
 import { isConversationTarget } from "./world/interaction";
 import { conversationNpc } from "./conversationTarget";
 import { CoopControls } from "./coop/CoopControls";
@@ -24,7 +38,12 @@ import { CoopControls } from "./coop/CoopControls";
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GuideDialog } from "./guide/GuideDialog";
-import { isNpcId, npcProfile, residentGreeting, type NpcId } from "./guide/knowledge";
+import {
+  isNpcId,
+  npcProfile,
+  residentGreeting,
+  type NpcId,
+} from "./guide/knowledge";
 import {
   ENTRY_CHOICES,
   PLACE_BY_ID,
@@ -117,7 +136,8 @@ function parseRunnerProjection(value: unknown): PlaygroundRunnerState | null {
       ? (value as PlaygroundRunnerState)
       : null;
   }
-  return Array.isArray(projection.members) && Array.isArray(projection.reactions)
+  return Array.isArray(projection.members) &&
+    Array.isArray(projection.reactions)
     ? (value as PlaygroundRunnerState)
     : null;
 }
@@ -145,13 +165,17 @@ function targetKindLabel(target: WorldTarget): string {
 }
 
 function targetTitle(target: WorldTarget): string {
-  return target.kind === "person" || target.kind === "mascot" || target.kind === "guide"
+  return target.kind === "person" ||
+    target.kind === "mascot" ||
+    target.kind === "guide"
     ? target.name
     : target.title;
 }
 
 function targetActionLabel(target: WorldTarget): string {
   switch (target.kind) {
+    case "object":
+      return "Interact";
     case "seat":
       return "Sit";
     case "app":
@@ -166,7 +190,10 @@ const TIME_OF_DAY_KEY = "plaza.timeOfDay";
 /** localStorage key for the name and animal this viewer chose. */
 const IDENTITY_KEY = "plaza.identity";
 
-function storedIdentity(): { display_name: string; animal_emoji: string } | null {
+function storedIdentity(): {
+  display_name: string;
+  animal_emoji: string;
+} | null {
   try {
     const raw = window.localStorage.getItem(IDENTITY_KEY);
     const value = raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
@@ -213,13 +240,89 @@ export default function PlaygroundPage() {
   // ---- Conversations (Nagi and the residents), lessons and journeys -------
   /** A conversation is open; `talkingTo` says with whom. */
   const [guideOpen, setGuideOpen] = useState(false);
+  const allPostsRef = useRef(createPlaygroundState());
+  const allPostsPendingRef = useRef(
+    new Map<number, import("./roomProtocol").AppRoomOpEvent>(),
+  );
+  const processAllPosts = useCallback(
+    (events: import("./roomProtocol").AppRoomOpEvent[]) => {
+      const pending = allPostsPendingRef.current;
+      for (const event of events)
+        if (event.seq > allPostsRef.current.cursor)
+          pending.set(event.seq, event);
+      let next = pending.get(allPostsRef.current.cursor + 1);
+      while (next) {
+        pending.delete(next.seq);
+        allPostsRef.current = bufferEvent(
+          allPostsRef.current,
+          roomOpToEvent(next, allPostsRef.current.posts, null),
+        );
+        next = pending.get(allPostsRef.current.cursor + 1);
+      }
+    },
+    [],
+  );
+  const openAirRef = useRef<OpenAirState>(emptyOpenAir());
+  const openAirPendingRef = useRef(
+    new Map<number, import("./roomProtocol").AppRoomOpEvent>(),
+  );
+  const clockOffsetRef = useRef(0);
+  const [exploreStatus, setExploreStatus] = useState<ExploreStatus | null>(
+    null,
+  );
+  const [settings, setSettings] = useState<ExploreSettings>(readSettings);
+  const [reactionsOpen, setReactionsOpen] = useState(false);
+  const sendOpenAirRef = useRef<(action: OpenAirAction) => void>(() => {});
+  const syncOpenAir = useCallback(() => {
+    worldRef.current?.setOpenAir(
+      openAirRef.current,
+      stateRef.current.viewer?.principal_id ?? "",
+      clockOffsetRef.current,
+      connectedRef.current,
+    );
+  }, []);
+  const connectedRef = useRef(false);
+  connectedRef.current = connected;
+  const processOpenAir = useCallback(
+    (events: import("./roomProtocol").AppRoomOpEvent[]) => {
+      const pending = openAirPendingRef.current;
+      for (const event of events)
+        if (event.seq > openAirRef.current.cursor)
+          pending.set(event.seq, event);
+      let event = pending.get(openAirRef.current.cursor + 1);
+      while (event) {
+        pending.delete(event.seq);
+        const op = event.op as { t?: string; action?: unknown } | null;
+        openAirRef.current = applyOpenAir(
+          openAirRef.current,
+          event.seq,
+          event.actor_id,
+          event.committed_at ?? Date.now() + clockOffsetRef.current,
+          event.state_schema_id === PLAZA_ROOM_SCHEMA_ID &&
+            typeof event.committed_at === "number" &&
+            op?.t === "openair"
+            ? op.action
+            : null,
+        );
+        event = pending.get(openAirRef.current.cursor + 1);
+      }
+      syncOpenAir();
+    },
+    [syncOpenAir],
+  );
   const [talkingTo, setTalkingTo] = useState<NpcId>("nagi");
   const [guideStart, setGuideStart] = useState<GuideReply | null>(null);
   const guideTalkedRef = useRef(false);
   /** A line from Nagi shown in the HUD while you practise or travel. */
   const [guideNote, setGuideNote] = useState<string | null>(null);
+  const escortIntentRef = useRef<string | null>(null);
   const guideTaskRef = useRef<
-    | { kind: "practice"; skill: PracticeSkill; from: { x: number; y: number; z: number; yaw: number }; done?: boolean }
+    | {
+        kind: "practice";
+        skill: PracticeSkill;
+        from: { x: number; y: number; z: number; yaw: number };
+        done?: boolean;
+      }
     | { kind: "go"; place: string }
     | null
   >(null);
@@ -228,7 +331,12 @@ export default function PlaygroundPage() {
     guideTalkedRef.current = true;
     // First time: her greeting. After that: straight to "how can I help".
     setGuideStart(
-      first ? null : { text: "Hello again. What can I help you with?", choices: [...ENTRY_CHOICES] },
+      first
+        ? null
+        : {
+            text: "Hello again. What can I help you with?",
+            choices: [...ENTRY_CHOICES],
+          },
     );
     setTalkingTo("nagi");
     setGuideOpen(true);
@@ -237,7 +345,32 @@ export default function PlaygroundPage() {
   openGuideRef.current = openGuide;
   const openNeighbor = useCallback((id: string) => {
     if (!isNpcId(id) || id === "nagi") return;
-    setGuideStart(residentGreeting(id, Date.now() / 1000));
+    const lease = activeLease(
+      openAirRef.current,
+      id as ResidentId,
+      Date.now() + clockOffsetRef.current,
+    );
+    if (lease && lease.owner !== stateRef.current.viewer?.principal_id) {
+      setError(
+        "This neighbor is already talking to someone. Try another neighbor.",
+      );
+      return;
+    }
+    const last = (
+      openAirRef.current.encounters[
+        stateRef.current.viewer?.principal_id ?? ""
+      ] ?? []
+    )
+      .filter((e) => e.id === id)
+      .slice(-1)[0];
+    setGuideStart(
+      last && Date.now() + clockOffsetRef.current - last.at < 900000
+        ? {
+            text: `Hello again. I remember your ${last.kind}. Shall we explore the coast together?`,
+            choices: residentGreeting(id, Date.now() / 1000).choices,
+          }
+        : residentGreeting(id, Date.now() / 1000),
+    );
     setTalkingTo(id);
     setGuideOpen(true);
   }, []);
@@ -453,7 +586,8 @@ export default function PlaygroundPage() {
       if (applicationController) {
         runnerDispatchRef.current = (protocolId, kind, payload) =>
           applicationController.dispatchOperation(protocolId, kind, payload);
-        unsubscribeController = applicationController.subscribeState(setController);
+        unsubscribeController =
+          applicationController.subscribeState(setController);
         runnerSnapshotRequestRef.current = () =>
           applicationController.requestSnapshot(PLAYGROUND_RUNNER_PROTOCOL);
         unsubscribeObservation = applicationController.subscribeObservation(
@@ -498,6 +632,8 @@ export default function PlaygroundPage() {
   /** Map one room op through the current posts + World, then buffer it. */
   const bufferRoomOp = useCallback(
     (event: import("./roomProtocol").AppRoomOpEvent) => {
+      processOpenAir([event]);
+      processAllPosts([event]);
       const world = worldIdRef.current;
       setState((current) =>
         bufferEvent(current, roomOpToEvent(event, current.posts, world)),
@@ -515,8 +651,9 @@ export default function PlaygroundPage() {
     const drift = stateRef.current.cursor - sealedBaseRef.current;
     if (drift < PLAZA_SEAL_DRIFT_OPS) return;
     try {
-      const payload = buildSealPayload(stateRef.current);
-      const sealed = await transport.seal(sealedBaseRef.current, payload);
+      if (allPostsRef.current.cursor !== stateRef.current.cursor) return;
+      const payload = buildSealPayload(allPostsRef.current, openAirRef.current);
+      const sealed = await transport.seal(payload.cursor, payload);
       sealedBaseRef.current = payload.cursor;
       void sealed;
     } catch {
@@ -532,21 +669,51 @@ export default function PlaygroundPage() {
     try {
       const boot = await transport.bootstrap();
       transport.roomEpoch = boot.room_epoch;
+      if (typeof boot.server_time_ms === "number")
+        clockOffsetRef.current = boot.server_time_ms - Date.now();
+      const sealed = boot.checkpoint_payload as { open_air?: unknown } | null;
+      openAirRef.current = restoreOpenAir(
+        boot.adapter_states?.[PLAZA_ROOM_SCHEMA_ID] ??
+          (boot.checkpoint?.state_schema_id === PLAZA_ROOM_SCHEMA_ID
+            ? sealed?.open_air
+            : null),
+      );
+      openAirRef.current.cursor = Math.max(
+        openAirRef.current.cursor,
+        boot.checkpoint?.base_cursor ?? 0,
+      );
+      processOpenAir(boot.events);
       sealedBaseRef.current = boot.checkpoint?.base_cursor ?? 0;
       const viewer = viewerFromHello(hello);
+      allPostsRef.current = roomBootstrapToState(
+        createPlaygroundState(),
+        viewer,
+        boot.checkpoint_payload,
+        0,
+        null,
+      );
+      allPostsRef.current.cursor = Math.max(
+        allPostsRef.current.cursor,
+        boot.checkpoint?.base_cursor ?? 0,
+      );
+      processAllPosts(boot.events);
       setState((current) => {
         // A World switch drops in-flight live events mapped for the old
         // World; mutes are viewer-local and survive. Reconnects keep both.
         const previous = opts?.fresh
           ? { ...createPlaygroundState(), mutedUserIds: current.mutedUserIds }
           : current;
-        return roomBootstrapToState(
+        const loaded = roomBootstrapToState(
           previous,
           viewer,
           boot.checkpoint_payload,
           0,
           worldIdRef.current,
         );
+        return {
+          ...loaded,
+          cursor: Math.max(loaded.cursor, boot.checkpoint?.base_cursor ?? 0),
+        };
       });
       setError(null);
       await catchUpRoomRef.current();
@@ -565,6 +732,8 @@ export default function PlaygroundPage() {
         const from = stateRef.current.cursor;
         const page = await transport.events(from);
         transport.roomEpoch = page.room_epoch;
+        processOpenAir(page.events);
+        processAllPosts(page.events);
         const world = worldIdRef.current;
         setState((current) =>
           applyEventsPage(
@@ -594,7 +763,8 @@ export default function PlaygroundPage() {
       if (post.activity_ref) activities.add(post.activity_ref);
     }
     if (apps.size === 0 && activities.size === 0) return;
-    const key = [...apps].sort().join(",") + "|" + [...activities].sort().join(",");
+    const key =
+      [...apps].sort().join(",") + "|" + [...activities].sort().join(",");
     if (cardsFetchedRef.current === key) return;
     cardsFetchedRef.current = key;
     try {
@@ -627,7 +797,8 @@ export default function PlaygroundPage() {
 
   useEffect(() => {
     const viewer = state.viewer;
-    const displayName = viewer?.display_name ?? controllerPresentation?.display_name;
+    const displayName =
+      viewer?.display_name ?? controllerPresentation?.display_name;
     if (!runnerBacked || !displayName) return;
     const signature = JSON.stringify([
       viewer?.principal_id,
@@ -651,7 +822,8 @@ export default function PlaygroundPage() {
               : {}),
         }),
       )
-    ) runnerPresentationRef.current = signature;
+    )
+      runnerPresentationRef.current = signature;
   }, [controllerPresentation, runnerBacked, state.viewer]);
 
   // ---- durable lane + presence lane, one socket --------------------------
@@ -714,12 +886,18 @@ export default function PlaygroundPage() {
                   }
                 : current,
             );
-            if (!message.accepted) setError("That name couldn't be used. Try another.");
+            if (!message.accepted)
+              setError("That name couldn't be used. Try another.");
             break;
           case "participant":
             if (runnerAvailableRef.current) break;
             setPresence((current) =>
-              applyJoin(current, toParticipant(message.participant), current.online, now),
+              applyJoin(
+                current,
+                toParticipant(message.participant),
+                current.online,
+                now,
+              ),
             );
             break;
           case "hello":
@@ -746,7 +924,10 @@ export default function PlaygroundPage() {
                 (chosen.display_name !== message.self.display_name ||
                   chosen.animal_emoji !== message.self.animal_emoji)
               ) {
-                transportRef.current?.sendIdentity(chosen.display_name, chosen.animal_emoji);
+                transportRef.current?.sendIdentity(
+                  chosen.display_name,
+                  chosen.animal_emoji,
+                );
               }
             }
             break;
@@ -829,7 +1010,9 @@ export default function PlaygroundPage() {
               typeof message.event.op === "object" &&
               (message.event.op as { t?: unknown }).t === "post"
             ) {
-              const payload = (message.event.op as { post?: Record<string, unknown> }).post;
+              const payload = (
+                message.event.op as { post?: Record<string, unknown> }
+              ).post;
               if (
                 payload &&
                 payload.kind === "text" &&
@@ -865,7 +1048,7 @@ export default function PlaygroundPage() {
             break;
           case "reset":
             spokenRef.current = new Set();
-            void loadRoom();
+            void loadRoom({ fresh: true });
             break;
         }
       },
@@ -878,6 +1061,11 @@ export default function PlaygroundPage() {
       transportRef.current = null;
     };
   }, [bufferRoomOp, loadRoom, maybeSeal]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => void maybeSeal(), 30000);
+    return () => window.clearInterval(timer);
+  }, [maybeSeal]);
 
   // Signing in happens on the PWA origin; the session cookie is scoped to the
   // parent domain, so coming back to this tab is enough. Re-bootstrap on
@@ -902,6 +1090,21 @@ export default function PlaygroundPage() {
         },
         onTargetChange: setTarget,
         onTransform: (transform) => {
+          // App-room adapters validate shared interactions against this same live pose.
+          transportRef.current?.sendEphemeral(
+            PLAZA_EPHEMERAL_TRANSFORM_KIND,
+            transform.world_id,
+            {
+              x: transform.x,
+              y: transform.y,
+              z: transform.z,
+              yaw: transform.yaw,
+              pitch: transform.pitch,
+              movement: transform.movement,
+              pose: transform.pose,
+            },
+            5000,
+          );
           if (runnerAvailableRef.current) {
             try {
               const sent = runnerDispatchRef.current(
@@ -927,20 +1130,6 @@ export default function PlaygroundPage() {
           // Fire-and-forget: a transform is only interesting until the
           // next one (~12Hz into a 15/s shared transient budget;
           // over-budget frames drop server-side).
-          transportRef.current?.sendEphemeral(
-              PLAZA_EPHEMERAL_TRANSFORM_KIND,
-              transform.world_id,
-              {
-                x: transform.x,
-                y: transform.y,
-                z: transform.z,
-                yaw: transform.yaw,
-                pitch: transform.pitch,
-                movement: transform.movement,
-                pose: transform.pose,
-              },
-              5000,
-          );
         },
         onRequestChat: () => {
           const npc = conversationNpc(targetRef.current);
@@ -975,7 +1164,8 @@ export default function PlaygroundPage() {
         },
         onFaceReaction: (principalId, emoji) => {
           const task = guideTaskRef.current;
-          if (task?.kind === "practice" && task.skill === "react") task.done = true;
+          if (task?.kind === "practice" && task.skill === "react")
+            task.done = true;
           if (runnerAvailableRef.current) {
             try {
               runnerDispatchRef.current(
@@ -992,11 +1182,11 @@ export default function PlaygroundPage() {
             return;
           }
           transportRef.current?.sendEphemeral(
-              PLAZA_EPHEMERAL_FACE_REACTION_KIND,
-              worldIdRef.current,
-              { target_principal_id: principalId, emoji },
-              2400,
-            );
+            PLAZA_EPHEMERAL_FACE_REACTION_KIND,
+            worldIdRef.current,
+            { target_principal_id: principalId, emoji },
+            2400,
+          );
         },
         onWorldChange: (next) => {
           setWorldId(next);
@@ -1030,15 +1220,18 @@ export default function PlaygroundPage() {
             void loadRoom({ fresh: true });
           }
         },
+        onOpenAirAction: (action) => sendOpenAirRef.current(action),
         onError: setError,
       });
-    } catch {
-      setError(
-        "Couldn't start 3D view. Open Plaza in a browser that supports WebGL.",
-      );
+    } catch (error) {
+      if (import.meta.env.DEV)
+        console.error("Plaza initialization failed", error);
+      setError("Plaza couldn't start. Reload the page and try again.");
       return;
     }
     worldRef.current = world;
+    syncOpenAir();
+    world.setSettings(settings);
     setWorldReady(true);
     return () => {
       world.dispose();
@@ -1050,6 +1243,7 @@ export default function PlaygroundPage() {
   // Push presence into the world. Expiry runs here rather than on a timer:
   // it only matters when something is being drawn.
   useEffect(() => {
+    worldRef.current?.setPeerAliases(runnerActorBySocialPrincipalRef.current);
     worldRef.current?.setPresence(
       visibleMembers(presence),
       presence.self?.principal_id ?? state.viewer?.principal_id ?? null,
@@ -1064,21 +1258,25 @@ export default function PlaygroundPage() {
   }, []);
 
   const exhibits = useMemo<ExhibitCard[]>(() => {
-    const apps = Object.values(state.cards.apps).map((card) => ({
-      ref: card.ref,
-      kind: "app" as const,
-      title: card.title,
-      subtitle: card.usable ? "Try it" : "Not available right now",
-    }));
-    const activities = Object.values(state.cards.activities).map((card) => ({
-      ref: card.ref,
-      kind: "activity" as const,
-      title: card.title,
-      subtitle:
-        card.participant_count !== null
-          ? `${card.participant_count} people`
-          : "Join",
-    }));
+    const apps = Object.values(state.cards.apps)
+      .filter((card) => card.usable)
+      .map((card) => ({
+        ref: card.ref,
+        kind: "app" as const,
+        title: card.title,
+        subtitle: card.usable ? "Try it" : "Not available right now",
+      }));
+    const activities = Object.values(state.cards.activities)
+      .filter((card) => card.usable)
+      .map((card) => ({
+        ref: card.ref,
+        kind: "activity" as const,
+        title: card.title,
+        subtitle:
+          card.participant_count !== null
+            ? `${card.participant_count} people`
+            : "Join",
+      }));
     return [...apps, ...activities];
   }, [state.cards]);
 
@@ -1109,13 +1307,18 @@ export default function PlaygroundPage() {
     if (!world) return;
     if (action.kind === "practice") {
       const pose = world.viewerPose();
-      guideTaskRef.current = { kind: "practice", skill: action.skill, from: pose };
+      guideTaskRef.current = {
+        kind: "practice",
+        skill: action.skill,
+        from: pose,
+      };
       setGuideNote(PRACTICE_PROMPTS[action.skill]);
       if (action.skill === "talk") return;
       world.requestPointerLock();
       return;
     }
     if (action.kind === "go") {
+      setMenuOpen(false);
       const place = PLACE_BY_ID.get(action.place);
       if (!place) return;
       guideTaskRef.current = { kind: "go", place: place.id };
@@ -1129,12 +1332,123 @@ export default function PlaygroundPage() {
     }
   }, []);
 
+  sendOpenAirRef.current = (action) => {
+    const transport = transportRef.current;
+    if (
+      !transport ||
+      !connectedRef.current ||
+      !stateRef.current.viewer?.can_post
+    ) {
+      setError(
+        "Connect to the plaza to interact with shared objects and neighbors.",
+      );
+      return;
+    }
+    const invocation = transport.prepareMutation({ t: "openair", action });
+    void transport
+      .invoke(invocation)
+      .then(async (result) => {
+        await catchUpRoomRef.current();
+        if (openAirRef.current.cursor < result.seq) return;
+        const own = stateRef.current.viewer?.principal_id ?? "",
+          now = Date.now() + clockOffsetRef.current;
+        if (
+          action.kind === "take" &&
+          heldItem(openAirRef.current, own, now) !== action.id
+        )
+          setError("Someone picked this up first. Try another object.");
+        if (
+          action.kind === "seat" &&
+          openAirRef.current.seats[action.id]?.owner !== own
+        )
+          setError("Someone is already using this seat. Try another seat.");
+      })
+      .catch((err: unknown) =>
+        setError(
+          err instanceof Error
+            ? err.message
+            : "The action could not be saved. Please try again.",
+        ),
+      );
+  };
+  useEffect(() => {
+    worldRef.current?.setSettings(settings);
+    try {
+      localStorage.setItem("plaza.explore-settings", JSON.stringify(settings));
+    } catch {
+      /* Viewer preference only. */
+    }
+  }, [settings, worldReady]);
+  useEffect(() => {
+    syncOpenAir();
+    const timer = window.setInterval(
+      () => setExploreStatus(worldRef.current?.exploreStatus() ?? null),
+      500,
+    );
+    const renewal = window.setInterval(() => {
+      const own = stateRef.current.viewer?.principal_id;
+      const seat = worldRef.current?.exploreStatus().seated,
+        pose = worldRef.current?.viewerPose();
+      if (seat && pose)
+        sendOpenAirRef.current({
+          kind: "seat",
+          id: seat,
+          x: pose.x,
+          z: pose.z,
+        });
+      for (const [id, lease] of Object.entries(openAirRef.current.leases))
+        if (lease?.owner === own && lease.goal) {
+          const place = PLACE_BY_ID.get(lease.goal),
+            p = worldRef.current?.residentPosition(id);
+          if (
+            place &&
+            p &&
+            Math.hypot(p.x - place.x, p.z - place.z) < place.radius
+          )
+            worldRef.current?.holdNeighbor(id, false);
+          else worldRef.current?.holdNeighbor(id, true);
+        }
+    }, 10000);
+    return () => {
+      window.clearInterval(timer);
+      window.clearInterval(renewal);
+    };
+  }, [connected, worldReady, syncOpenAir]);
+
   // A resident you are talking to stays put and faces you until you are done.
   useEffect(() => {
-    if (!guideOpen || talkingTo === "nagi") return;
+    if (!guideOpen) return;
     const world = worldRef.current;
+    escortIntentRef.current = null;
     world?.holdNeighbor(talkingTo, true);
-    return () => world?.holdNeighbor(talkingTo, false);
+    const ownership = window.setInterval(() => {
+      const lease = activeLease(
+        openAirRef.current,
+        talkingTo as ResidentId,
+        Date.now() + clockOffsetRef.current,
+      );
+      if (lease && lease.owner !== stateRef.current.viewer?.principal_id) {
+        setGuideOpen(false);
+        setError(
+          "This neighbor is helping someone else. Please try another neighbor.",
+        );
+      }
+    }, 500);
+    const timer = window.setInterval(
+      () => world?.holdNeighbor(talkingTo, true),
+      10000,
+    );
+    return () => {
+      window.clearInterval(timer);
+      window.clearInterval(ownership);
+      const lease = activeLease(
+        openAirRef.current,
+        talkingTo as ResidentId,
+        Date.now() + clockOffsetRef.current,
+      );
+      if (!lease?.goal && escortIntentRef.current !== talkingTo)
+        world?.holdNeighbor(talkingTo, false);
+    };
   }, [guideOpen, talkingTo]);
 
   // Watch the lesson or journey in progress, a few times a second.
@@ -1143,7 +1457,10 @@ export default function PlaygroundPage() {
       guideTaskRef.current = null;
       setGuideNote(line);
       worldRef.current?.guideSay(SUCCESS_LINE);
-      window.setTimeout(() => setGuideNote((current) => (current === line ? null : current)), 6000);
+      window.setTimeout(
+        () => setGuideNote((current) => (current === line ? null : current)),
+        6000,
+      );
     };
     const timer = window.setInterval(() => {
       const task = guideTaskRef.current;
@@ -1163,10 +1480,16 @@ export default function PlaygroundPage() {
         return;
       }
       const from = task.from;
-      const turned = Math.abs(Math.atan2(Math.sin(pose.yaw - from.yaw), Math.cos(pose.yaw - from.yaw)));
+      const turned = Math.abs(
+        Math.atan2(
+          Math.sin(pose.yaw - from.yaw),
+          Math.cos(pose.yaw - from.yaw),
+        ),
+      );
       const done =
         task.done ||
-        (task.skill === "move" && Math.hypot(pose.x - from.x, pose.z - from.z) > 2.5) ||
+        (task.skill === "move" &&
+          Math.hypot(pose.x - from.x, pose.z - from.z) > 2.5) ||
         (task.skill === "look" && turned > 1.2) ||
         (task.skill === "jump" && pose.y > from.y + 0.35);
       if (done) finish(SUCCESS_LINE);
@@ -1177,13 +1500,17 @@ export default function PlaygroundPage() {
   // Opening the composer is the "talk" lesson's goal.
   useEffect(() => {
     const task = guideTaskRef.current;
-    if (chatting && task?.kind === "practice" && task.skill === "talk") task.done = true;
+    if (chatting && task?.kind === "practice" && task.skill === "talk")
+      task.done = true;
   }, [chatting]);
 
   // Chat and pointer lock are mutually exclusive: a locked pointer swallows
   // the keystrokes the composer needs.
   useEffect(() => {
-    if (menuOpen || guideOpen) document.exitPointerLock?.();
+    if (menuOpen || guideOpen) {
+      worldRef.current?.setPaused(true);
+      document.exitPointerLock?.();
+    }
   }, [menuOpen, guideOpen]);
 
   useEffect(() => {
@@ -1209,23 +1536,29 @@ export default function PlaygroundPage() {
   const canPost = viewer?.can_post === true;
   const remaining = TEXT_LIMIT - [...draft].length;
 
-  const saveIdentity = useCallback((displayName: string, animalEmoji: string) => {
-    try {
-      window.localStorage.setItem(
-        IDENTITY_KEY,
-        JSON.stringify({ display_name: displayName, animal_emoji: animalEmoji }),
-      );
-    } catch {
-      // Remembering is a convenience; the change still applies to this visit.
-    }
-    transportRef.current?.sendIdentity(displayName, animalEmoji);
-    // A room that predates name changes never answers; say so rather than
-    // leaving Save looking like it worked.
-    window.clearTimeout(identityTimeoutRef.current);
-    identityTimeoutRef.current = window.setTimeout(() => {
-      setError("Name changes aren't available in this room yet.");
-    }, 4000);
-  }, []);
+  const saveIdentity = useCallback(
+    (displayName: string, animalEmoji: string) => {
+      try {
+        window.localStorage.setItem(
+          IDENTITY_KEY,
+          JSON.stringify({
+            display_name: displayName,
+            animal_emoji: animalEmoji,
+          }),
+        );
+      } catch {
+        // Remembering is a convenience; the change still applies to this visit.
+      }
+      transportRef.current?.sendIdentity(displayName, animalEmoji);
+      // A room that predates name changes never answers; say so rather than
+      // leaving Save looking like it worked.
+      window.clearTimeout(identityTimeoutRef.current);
+      identityTimeoutRef.current = window.setTimeout(() => {
+        setError("Name changes aren't available in this room yet.");
+      }, 4000);
+    },
+    [],
+  );
 
   const closeChat = useCallback(() => {
     setChatting(false);
@@ -1307,7 +1640,10 @@ export default function PlaygroundPage() {
         onClose={() => setMenuOpen(false)}
         identity={
           viewer
-            ? { displayName: viewer.display_name, animalEmoji: viewer.animal_emoji }
+            ? {
+                displayName: viewer.display_name,
+                animalEmoji: viewer.animal_emoji,
+              }
             : null
         }
         canEditIdentity={connected && !runnerAvailableRef.current && !!viewer}
@@ -1324,6 +1660,14 @@ export default function PlaygroundPage() {
         timeOfDay={timeOfDay}
         onTimeOfDay={setTimeOfDay}
         lookMode={lookMode}
+        settings={settings}
+        onSettings={setSettings}
+        onPlace={(id) =>
+          runGuideAction({
+            kind: "go",
+            place: id as import("./guide/nagi").PlaceId,
+          })
+        }
       />
 
       {!runnerBacked && !runnerAvailableRef.current && connected ? (
@@ -1356,7 +1700,11 @@ export default function PlaygroundPage() {
         </div>
       ) : null}
 
-      {target && !isConversationTarget(target) && !chatting && !guideOpen && !menuOpen ? (
+      {target &&
+      !isConversationTarget(target) &&
+      !chatting &&
+      !guideOpen &&
+      !menuOpen ? (
         <div className="pg-interaction">
           <span className="pg-interaction-kind">{targetKindLabel(target)}</span>
           <strong>{targetTitle(target)}</strong>
@@ -1381,7 +1729,11 @@ export default function PlaygroundPage() {
         </button>
       ) : null}
 
-
+      <ExploreControls
+        status={exploreStatus}
+        hidden={menuOpen || guideOpen || chatting}
+        onUse={(throwing) => worldRef.current?.useHeld(throwing)}
+      />
       <GuideDialog
         open={guideOpen}
         npc={npcProfile(talkingTo)}
@@ -1391,14 +1743,61 @@ export default function PlaygroundPage() {
         onClose={() => setGuideOpen(false)}
         // The server decides who gets the model (an ato session, even in a
         // shared Public instance where the room calls everyone a guest).
-        useModel
+        useModel={
+          connected &&
+          activeLease(
+            openAirRef.current,
+            talkingTo as ResidentId,
+            Date.now() + clockOffsetRef.current,
+          )?.owner === state.viewer?.principal_id
+        }
+        waitingForClaim={
+          connected &&
+          !!state.viewer?.can_post &&
+          !activeLease(
+            openAirRef.current,
+            talkingTo as ResidentId,
+            Date.now() + clockOffsetRef.current,
+          )
+        }
+        onEscort={(goal) => {
+          const lease = activeLease(
+            openAirRef.current,
+            talkingTo as ResidentId,
+            Date.now() + clockOffsetRef.current,
+          );
+          if (!lease || lease.owner !== stateRef.current.viewer?.principal_id)
+            return;
+          escortIntentRef.current = talkingTo;
+          worldRef.current?.escort(talkingTo as ResidentId, goal);
+          setGuideOpen(false);
+        }}
+        sharedApps={Object.values(state.cards.apps)
+          .filter((card) => card.usable)
+          .map((card) => ({ ref: card.ref, title: card.title }))}
+        onTryApp={(ref) => {
+          const card = stateRef.current.cards.apps[ref];
+          const href = card?.usable && pwaUrl(card.app_path);
+          if (href) window.open(href, "_blank", "noopener");
+        }}
+        onDiscussApp={(ref) => {
+          const card = stateRef.current.cards.apps[ref];
+          const href = card?.usable && pwaUrl(card.app_path);
+          if (!href) return;
+          setGuideOpen(false);
+          setDraft(`${card.title}: ${href}`.slice(0, 200));
+          setChatting(true);
+        }}
+        heldItem={exploreStatus?.held}
+        onDeliver={() => worldRef.current?.deliver()}
+        memories={exploreStatus?.memories ?? []}
       />
 
       {guideNote && !guideOpen ? (
         <div className="pg-guide-note" role="status">
           <span aria-hidden="true">👒</span>
           <span>
-            <strong>Nagi</strong>
+            <strong>{npcProfile(talkingTo).name}</strong>
             {guideNote}
           </span>
           <button
@@ -1406,7 +1805,8 @@ export default function PlaygroundPage() {
             aria-label="Close"
             onClick={() => {
               setGuideNote(null);
-              if (guideTaskRef.current?.kind === "go") worldRef.current?.setWaypoint(null);
+              if (guideTaskRef.current?.kind === "go")
+                worldRef.current?.setWaypoint(null);
               guideTaskRef.current = null;
             }}
           >
@@ -1426,13 +1826,29 @@ export default function PlaygroundPage() {
         {/* Everything you say to people, in one place: reactions to whoever
             you face, and the message composer. */}
         <div className="pg-talk">
-          <div className="pg-reactions" role="group" aria-label="Reactions">
+          <button
+            className="pg-reaction-toggle"
+            aria-label="Reactions"
+            aria-expanded={reactionsOpen}
+            onClick={() => setReactionsOpen((v) => !v)}
+          >
+            ☺
+          </button>
+          <div
+            className={`pg-reactions${reactionsOpen ? " pg-reactions--open" : ""}`}
+            role="group"
+            aria-label="Reactions"
+          >
             {PLAYGROUND_FACE_REACTIONS.map((emoji, index) => (
               <button
                 key={emoji}
                 type="button"
                 title={`${index + 1} · React to whoever you're facing`}
-                disabled={!canPost && target?.kind !== "mascot" && target?.kind !== "guide"}
+                disabled={
+                  !canPost &&
+                  target?.kind !== "mascot" &&
+                  target?.kind !== "guide"
+                }
                 onClick={() => worldRef.current?.reactAtTarget(emoji)}
               >
                 <span aria-hidden="true">{emoji}</span>
@@ -1454,14 +1870,19 @@ export default function PlaygroundPage() {
               Talk<kbd>↵</kbd>
             </button>
           ) : (
-            <a className="pg-chat-open" href={pwaUrl(SIGN_IN_PATH) ?? SIGN_IN_PATH}>
+            <a
+              className="pg-chat-open"
+              href={pwaUrl(SIGN_IN_PATH) ?? SIGN_IN_PATH}
+            >
               Sign in to talk
             </a>
           )}
         </div>
       </footer>
 
-      <MobileJoystick onChange={(x, y) => worldRef.current?.setJoystick(x, y)} />
+      <MobileJoystick
+        onChange={(x, y) => worldRef.current?.setJoystick(x, y)}
+      />
 
       {/* Act on touch-DOWN, not click: a phone does not synthesize a click
           for a second finger while the first is on the joystick. */}
@@ -1472,7 +1893,18 @@ export default function PlaygroundPage() {
           aria-label="Crouch"
           onPress={toggleCrouch}
         >
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+          <svg
+            width="26"
+            height="26"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
             <circle cx="12" cy="7" r="2" />
             <path d="m11 10-3 4 5 2-3 5m1-11 4 3 4-1m-6 4 5 1 2 4M3 3v6m-2-2 2 2 2-2" />
           </svg>
@@ -1482,7 +1914,18 @@ export default function PlaygroundPage() {
           aria-label="Jump"
           onPress={() => worldRef.current?.jump()}
         >
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+          <svg
+            width="26"
+            height="26"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
             <circle cx="13" cy="5" r="2" />
             <path d="m12 8-2 5 4 3 1 5m-5-8-4 4-3-1m9-8-4 1-2-3m6 2 4 3 4-3M3 9V3m-2 2 2-2 2 2" />
           </svg>
@@ -1522,10 +1965,15 @@ export default function PlaygroundPage() {
               if (event.key === "Escape") closeChat();
             }}
           />
-          <span className={`pg-remaining${remaining < 0 ? " pg-remaining--over" : ""}`}>
+          <span
+            className={`pg-remaining${remaining < 0 ? " pg-remaining--over" : ""}`}
+          >
             {remaining}
           </span>
-          <button type="submit" disabled={!canPost || !draft.trim() || remaining < 0}>
+          <button
+            type="submit"
+            disabled={!canPost || !draft.trim() || remaining < 0}
+          >
             Send
           </button>
           <button type="button" onClick={closeChat} aria-label="Close">
@@ -1537,7 +1985,11 @@ export default function PlaygroundPage() {
       {error ? (
         <div className="pg-notice" role="status">
           {error}
-          <button type="button" onClick={() => setError(null)} aria-label="Close">
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            aria-label="Close"
+          >
             ✕
           </button>
         </div>
@@ -1582,7 +2034,8 @@ function MobileJoystick({
         x *= radius / length;
         y *= radius / length;
       }
-      if (stickRef.current) stickRef.current.style.transform = `translate(${x}px, ${y}px)`;
+      if (stickRef.current)
+        stickRef.current.style.transform = `translate(${x}px, ${y}px)`;
       onChangeRef.current(x / radius, -y / radius);
     };
     const find = (list: TouchList) => {
@@ -1636,7 +2089,10 @@ function PressButton({
   onPress,
   children,
   ...rest
-}: Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "onClick" | "onPointerDown"> & {
+}: Omit<
+  React.ButtonHTMLAttributes<HTMLButtonElement>,
+  "onClick" | "onPointerDown"
+> & {
   onPress: () => void;
 }) {
   const ref = useRef<HTMLButtonElement>(null);

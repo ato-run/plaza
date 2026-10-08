@@ -24,11 +24,16 @@ export type WorldTarget =
   | { kind: "mascot"; mascotId: string; name: string }
   | { kind: "guide"; guideId: string; name: string }
   | { kind: "app" | "activity"; ref: string; title: string }
-  | { kind: "seat"; seatId: string; title: string };
+  | { kind: "seat"; seatId: string; title: string }
+  | { kind: "object"; objectId: string; title: string };
 
 /** Conversations use Talk/Enter, never the object-interaction shortcut. */
 export function isConversationTarget(target: WorldTarget | null): boolean {
-  return target?.kind === "person" || target?.kind === "mascot" || target?.kind === "guide";
+  return (
+    target?.kind === "person" ||
+    target?.kind === "mascot" ||
+    target?.kind === "guide"
+  );
 }
 
 /** A stable identity for a target, for change detection. */
@@ -41,6 +46,8 @@ export function targetKey(target: WorldTarget | null): string {
       return `mascot:${target.mascotId}`;
     case "guide":
       return `guide:${target.guideId}`;
+    case "object":
+      return `object:${target.objectId}`;
     case "seat":
       return `seat:${target.seatId}`;
     default:
@@ -61,7 +68,8 @@ export function interactableCandidate(
 ): TargetCandidate<WorldTarget> | null {
   if (interactable.kind === "software") {
     const ref = interactable.meta?.ref;
-    const cardKind = interactable.meta?.cardKind === "activity" ? "activity" : "app";
+    const cardKind =
+      interactable.meta?.cardKind === "activity" ? "activity" : "app";
     if (!ref) return null;
     return {
       item: { kind: cardKind, ref, title: interactable.title },
@@ -69,9 +77,24 @@ export function interactableCandidate(
       maxDistance: interactable.maxDistance,
     };
   }
+  if (interactable.kind === "object") {
+    return {
+      item: {
+        kind: "object",
+        objectId: interactable.id,
+        title: interactable.title,
+      },
+      position: interactable.anchor,
+      maxDistance: interactable.maxDistance ?? 3.2,
+    };
+  }
   if (interactable.kind === "guide") {
     return {
-      item: { kind: "guide", guideId: interactable.id, name: interactable.title },
+      item: {
+        kind: "guide",
+        guideId: interactable.id,
+        name: interactable.title,
+      },
       position: interactable.anchor,
       maxDistance: interactable.maxDistance,
     };

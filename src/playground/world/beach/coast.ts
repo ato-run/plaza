@@ -16,6 +16,7 @@
  * spawn faces it), the coast bends back south on both sides, and dunes rise
  * behind the spawn.
  */
+import { boundaryHeight } from "../openAir/layout";
 import { WORLD_RADIUS } from "../worldMath";
 
 /** Calm-water level. The walkable plaza is at 0; the sea sits below its edge. */
@@ -34,14 +35,19 @@ export const BEACH_WIDTH = 7.5;
 export function shoreZ(x: number): number {
   return (
     -(34 + 2.2 * Math.sin(0.09 * x + 0.6) + 1.3 * Math.sin(0.21 * x + 2.1)) +
-    0.0055 * x * x
+    0.0055 * x * x -
+    3.8 * Math.exp(-(((x + 18) / 5) ** 2))
   );
 }
 
 function shoreSlope(x: number): number {
   return (
-    -(2.2 * 0.09 * Math.cos(0.09 * x + 0.6) + 1.3 * 0.21 * Math.cos(0.21 * x + 2.1)) +
-    0.011 * x
+    -(
+      2.2 * 0.09 * Math.cos(0.09 * x + 0.6) +
+      1.3 * 0.21 * Math.cos(0.21 * x + 2.1)
+    ) +
+    0.011 * x +
+    ((3.8 * 2 * (x + 18)) / 25) * Math.exp(-(((x + 18) / 5) ** 2))
   );
 }
 
@@ -111,6 +117,13 @@ export function terrainHeight(x: number, z: number): number {
   if (radius <= FLAT_RADIUS) return 0;
   const distance = shoreDistance(x, z);
   let height = profileHeight(distance);
+  // A shallow basin carved into the same terrain sampled by the water shader.
+  const pool = Math.hypot(x + 19, z + 30);
+  if (pool < 2.4)
+    height = Math.min(
+      height,
+      SEA_LEVEL - 0.14 * (1 - smoothstep(1.5, 2.4, pool)),
+    );
   if (distance > BEACH_WIDTH) {
     // Dunes: only on dry land, rising away from the plaza edge.
     const inland = smoothstep(BEACH_WIDTH, BEACH_WIDTH + 14, distance);
@@ -122,7 +135,7 @@ export function terrainHeight(x: number, z: number): number {
   }
   // Blend the edge of the flat disc so there is no step at FLAT_RADIUS.
   const edge = smoothstep(FLAT_RADIUS, FLAT_RADIUS + 3, radius);
-  return height * edge;
+  return height * edge + boundaryHeight(x, z);
 }
 
 /** Deepest water people wade into: about knee to thigh height. */
@@ -136,11 +149,11 @@ export const WALK_EXTENT = 60;
  * Where people may walk: the plaza disc, plus the beach from the dunes'
  * foot down into the shallows, along the coast in both directions.
  */
-export function beachWalkable(x: number, z: number): boolean {
+export function beachWalkable(x: number, z: number, tide = 0): boolean {
   if (Math.hypot(x, z) < WORLD_RADIUS) return true;
   if (Math.abs(x) > WALK_EXTENT || Math.abs(z) > WALK_EXTENT) return false;
-  if (shoreDistance(x, z) > BEACH_WALK_BAND) return false;
-  return SEA_LEVEL - terrainHeight(x, z) <= WADE_DEPTH;
+  if (Math.abs(x) > 54 || z > 54 || boundaryHeight(x, z) > 3.5) return false;
+  return SEA_LEVEL + tide - terrainHeight(x, z) <= WADE_DEPTH;
 }
 
 /** Still-water depth above the ground at a point (negative on dry land). */

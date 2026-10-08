@@ -1,3 +1,4 @@
+import type { OpenAirState, OpenAirAction } from "./world/openAir/model";
 import { validateDurable } from "./coop/adapter";
 /**
  * Plaza over an App Room (per-instance shared-state lane).
@@ -48,7 +49,8 @@ export const APP_ROOM_API_PREFIX = "/__ato/app-room";
 export const CATALOG_CARDS_PATH = "/__ato/catalog/cards";
 
 export const PLAZA_EPHEMERAL_TRANSFORM_KIND = "plaza.transform" as const;
-export const PLAZA_EPHEMERAL_FACE_REACTION_KIND = "plaza.face-reaction" as const;
+export const PLAZA_EPHEMERAL_FACE_REACTION_KIND =
+  "plaza.face-reaction" as const;
 
 /** Sealed state keeps the latest N posts; older ones live in the suffix. */
 export const PLAZA_SEAL_POST_LIMIT = 200;
@@ -68,6 +70,7 @@ export type PlazaOp =
         created_at: string;
       };
     }
+  | { t: "openair"; action: OpenAirAction }
   | { t: "post.deleted"; post_id: string }
   | { t: "reaction"; post_id: string; reaction: string }
   | { t: "unreaction"; post_id: string; reaction: string };
@@ -78,6 +81,7 @@ export interface AppRoomOpEvent {
   operation_id: string;
   actor_id: string;
   actor_kind: "account" | "guest" | "agent";
+  committed_at?: number;
   actor?: import("./types").VerifiedActorMetadata;
   state_schema_id: string;
   room_epoch: number;
@@ -95,6 +99,8 @@ export interface AppRoomCheckpointMeta {
 }
 
 export interface AppRoomBootstrap {
+  server_time_ms?: number;
+  adapter_states?: Record<string, unknown>;
   room_epoch: number;
   checkpoint: AppRoomCheckpointMeta | null;
   checkpoint_payload: unknown;
@@ -143,11 +149,47 @@ export function newOperationId(): string {
     : `op-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+/** Public Ato links only; catalogue resolution remains the visibility authority. */
+export function sharedLink(
+  text: string,
+): { kind: "app" | "activity"; ref: string } | null {
+  const candidates = text.match(/https?:\/\/[^\s<>]+/g) ?? [];
+  for (const value of candidates) {
+    try {
+      const url = new URL(value.replace(/[.,;!?)]*$/, ""));
+      if (
+        url.protocol !== "https:" ||
+        !(url.hostname === "ato.run" || url.hostname.endsWith(".ato.run"))
+      )
+        continue;
+      const detail =
+        url.searchParams.get("detail") ?? url.searchParams.get("app");
+      const canonical = detail?.match(
+        /^(?:capsule|discover):([A-Za-z0-9_-]{1,128})$/,
+      );
+      if (url.pathname === "/" && canonical)
+        return { kind: "app", ref: canonical[1] };
+      const activity = url.pathname.match(
+        /^\/activity\/([A-Za-z0-9_-]{1,128})\/?$/,
+      );
+      if (activity) return { kind: "activity", ref: activity[1] };
+      const capsule = url.pathname.match(
+        /^\/app\/capsule\/([A-Za-z0-9_-]{1,128})\/?$/,
+      );
+      if (capsule) return { kind: "app", ref: capsule[1] };
+    } catch {
+      /* The message still sends when a link is malformed. */
+    }
+  }
+  return null;
+}
+
 export function postOp(
   text: string,
   world: WorldId,
 ): { op: PlazaOp; postId: string } {
   const postId = newOperationId();
+  const shared = sharedLink(text);
   return {
     op: {
       t: "post",
@@ -156,8 +198,8 @@ export function postOp(
         world: world,
         kind: "text",
         text,
-        app_ref: null,
-        activity_ref: null,
+        app_ref: shared?.kind === "app" ? shared.ref : null,
+        activity_ref: shared?.kind === "activity" ? shared.ref : null,
         created_at: new Date().toISOString(),
       },
     },
@@ -182,7 +224,10 @@ function isPlazaOp(op: unknown): op is PlazaOp {
   if (!op || typeof op !== "object" || Array.isArray(op)) return false;
   const t = (op as { t?: unknown }).t;
   return (
-    t === "post" || t === "post.deleted" || t === "reaction" || t === "unreaction"
+    t === "post" ||
+    t === "post.deleted" ||
+    t === "reaction" ||
+    t === "unreaction"
   );
 }
 
@@ -194,7 +239,7 @@ function isPlazaOp(op: unknown): op is PlazaOp {
 export function roomOpToEvent(
   event: AppRoomOpEvent,
   known: ReadonlyMap<string, PlaygroundPost>,
-  world: WorldId,
+  world: WorldId | null,
 ): PlaygroundEvent {
   const base = {
     seq: event.seq,
@@ -215,6 +260,8 @@ export function roomOpToEvent(
     return noopEvent(event.seq, event.operation_id);
   if (!isPlazaOp(event.op)) return noopEvent(event.seq, event.operation_id);
   switch (event.op.t) {
+    case "openair":
+      return noopEvent(event.seq, event.operation_id);
     case "post": {
       const post = event.op.post;
       if (
@@ -222,7 +269,7 @@ export function roomOpToEvent(
         post.kind !== "text" ||
         typeof post.text !== "string" ||
         !isWorldId(post.world) ||
-        post.world !== world
+        (world !== null && post.world !== world)
       ) {
         return noopEvent(event.seq, event.operation_id);
       }
@@ -291,7 +338,7 @@ export function roomOpToEvent(
 export function mapRoomEventsPage(
   events: AppRoomOpEvent[],
   known: ReadonlyMap<string, PlaygroundPost>,
-  world: WorldId,
+  world: WorldId | null,
 ): PlaygroundEvent[] {
   const scratch = new Map(known);
   return events.map((event) => {
@@ -339,14 +386,23 @@ export interface PlazaSealPayload {
   v: 1;
   posts: PlaygroundPost[];
   cursor: number;
+  open_air?: OpenAirState;
 }
 
-export function buildSealPayload(state: PlaygroundState): PlazaSealPayload {
+export function buildSealPayload(
+  state: PlaygroundState,
+  openAir?: OpenAirState,
+): PlazaSealPayload {
   const posts = state.order
     .map((id) => state.posts.get(id))
     .filter((post): post is PlaygroundPost => Boolean(post))
     .slice(-PLAZA_SEAL_POST_LIMIT);
-  return { v: 1, posts, cursor: state.cursor };
+  return {
+    v: 1,
+    posts,
+    cursor: state.cursor,
+    ...(openAir ? { open_air: openAir } : {}),
+  };
 }
 
 function isSealPayload(value: unknown): value is PlazaSealPayload {
@@ -368,7 +424,7 @@ export function roomBootstrapToState(
   viewer: PlaygroundViewer,
   seal: unknown,
   online: number,
-  world: WorldId,
+  world: WorldId | null,
 ): PlaygroundState {
   const posts = new Map<string, PlaygroundPost>();
   const order: string[] = [];
@@ -377,7 +433,7 @@ export function roomBootstrapToState(
     for (const post of seal.posts) {
       if (!post || typeof post.id !== "string" || posts.has(post.id)) continue;
       const postWorld = isWorldId(post.world) ? post.world : null;
-      if (postWorld !== null && postWorld !== world) continue;
+      if (world !== null && postWorld !== null && postWorld !== world) continue;
       posts.set(post.id, {
         ...post,
         reactions: post.reactions ?? {},
@@ -413,7 +469,9 @@ export function roomBootstrapToState(
 export function viewerFromHello(
   hello: Pick<AppRoomHello, "self" | "role" | "actor_kind" | "open_posting">,
 ): PlaygroundViewer {
-  const isGuest = hello.actor_kind === "guest" || hello.self.principal_id.startsWith("guest:");
+  const isGuest =
+    hello.actor_kind === "guest" ||
+    hello.self.principal_id.startsWith("guest:");
   const canPost =
     hello.role === "owner" ||
     hello.role === "editor" ||
