@@ -1490,14 +1490,20 @@ export default function PlaygroundPage() {
           aria-label="Crouch"
           onPress={toggleCrouch}
         >
-          Crouch
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="7" r="2" />
+            <path d="m11 10-3 4 5 2-3 5m1-11 4 3 4-1m-6 4 5 1 2 4M3 3v6m-2-2 2 2 2-2" />
+          </svg>
         </PressButton>
         <PressButton
           className="pg-action"
           aria-label="Jump"
           onPress={() => worldRef.current?.jump()}
         >
-          Jump
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+            <circle cx="13" cy="5" r="2" />
+            <path d="m12 8-2 5 4 3 1 5m-5-8-4 4-3-1m9-8-4 1-2-3m6 2 4 3 4-3M3 9V3m-2 2 2-2 2 2" />
+          </svg>
         </PressButton>
       </div>
 
