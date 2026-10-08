@@ -172,7 +172,7 @@ export function plazaFacts(context: GuideContext & { signedIn: boolean }): strin
     "Reactions (four emoji at the bottom right, or keys 1 to 4) go to the person you are facing.",
     "To change your name or icon: open the Menu, edit the name or pick an icon under your profile, then press Save.",
     "The Menu (top left, or the M key) has: your name and icon, the time of day (Day or Sunset, which only changes your own view), the list of worlds (only Central Plaza is open; the others are coming soon), and a list of controls.",
-    "Ten animal residents live in the plaza and wander about; you can talk to them with E (or the Talk prompt) when you face one.",
+    "Ten animal residents live in the plaza and wander about; you can talk to them with Enter (or the bottom Talk button) when you face one.",
     `Places a guide can lead you to: ${PLACES.filter((place) => place.id !== "exhibits" || context.exhibits > 0)
       .map((place) => `${place.label} (${place.description})`)
       .join("; ")}.`,

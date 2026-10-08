@@ -262,7 +262,7 @@ export const centralPlaza: WorldDefinition = {
         say: (text, durationMs) => guide.say(text, performance.now(), durationMs),
       },
 
-      neighbors: { hold: (id, on) => residents.hold(id, on) },
+      neighbors: { hold: (id, on) => residents.hold(id, on), react: (id, emoji) => residents.react(id, emoji) },
 
       labels: [{ element: guide.label, position: guide.labelPosition }, ...residents.labels],
 

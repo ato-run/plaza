@@ -237,7 +237,7 @@ export interface WorldRuntime {
   /** The World's guide, if it has one: the page speaks through her. */
   guide?: { say(text: string, durationMs?: number): void };
   /** The World's residents: keep one in place while the viewer talks to them. */
-  neighbors?: { hold(id: string, on: boolean): void };
+  neighbors?: { hold(id: string, on: boolean): void; react(id: string, emoji: string): void };
   dispose(): void;
 }
 

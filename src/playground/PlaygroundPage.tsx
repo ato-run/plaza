@@ -1,3 +1,5 @@
+import { isConversationTarget } from "./world/interaction";
+import { conversationNpc } from "./conversationTarget";
 import { CoopControls } from "./coop/CoopControls";
 /**
  * Playground — one global Lobby (`global-v1`), as a first-person world.
@@ -150,12 +152,6 @@ function targetTitle(target: WorldTarget): string {
 
 function targetActionLabel(target: WorldTarget): string {
   switch (target.kind) {
-    case "person":
-      return "Talk";
-    case "mascot":
-      return "Talk";
-    case "guide":
-      return "Talk";
     case "seat":
       return "Sit";
     case "app":
@@ -188,6 +184,8 @@ export default function PlaygroundPage() {
   const [state, setState] = useState<PlaygroundState>(createPlaygroundState);
   const [presence, setPresence] = useState<PresenceState>(createPresenceState);
   const [target, setTarget] = useState<WorldTarget | null>(null);
+  const targetRef = useRef(target);
+  targetRef.current = target;
   const [locked, setLocked] = useState(false);
   const [exploreHintSeen, setExploreHintSeen] = useState(false);
   const [exploreHint, setExploreHint] = useState(false);
@@ -947,23 +945,15 @@ export default function PlaygroundPage() {
               5000,
           );
         },
-        onRequestChat: () => setChatting(true),
+        onRequestChat: () => {
+          const npc = conversationNpc(targetRef.current);
+          if (npc === "nagi") openGuideRef.current();
+          else if (npc) openNeighborRef.current(npc);
+          else setChatting(true);
+        },
         onRequestMenu: () => openMenuRef.current("profile"),
         onInteract: (item) => {
-          if (item.kind === "person") {
-            setChatting(true);
-            return;
-          }
-          if (item.kind === "guide") {
-            openGuideRef.current();
-            return;
-          }
-          if (item.kind === "mascot") {
-            openNeighborRef.current(item.mascotId);
-            return;
-          }
-          // Seats never reach here — the World handles its own local
-          // affordances, so beyond conversations this page only opens Software.
+          // Conversations only use Talk/Enter; this callback opens exhibits.
           if (item.kind !== "app" && item.kind !== "activity") return;
           const card =
             item.kind === "app"
@@ -1375,7 +1365,7 @@ export default function PlaygroundPage() {
         </div>
       ) : null}
 
-      {target && !chatting && !guideOpen && !menuOpen ? (
+      {target && !isConversationTarget(target) && !chatting && !guideOpen && !menuOpen ? (
         <div className="pg-interaction">
           <span className="pg-interaction-kind">{targetKindLabel(target)}</span>
           <strong>{targetTitle(target)}</strong>
@@ -1460,8 +1450,8 @@ export default function PlaygroundPage() {
               <button
                 key={emoji}
                 type="button"
-                title={`${index + 1} · React to the person you're facing`}
-                disabled={!canPost}
+                title={`${index + 1} · React to whoever you're facing`}
+                disabled={!canPost && target?.kind !== "mascot" && target?.kind !== "guide"}
                 aria-label={`React ${emoji}`}
                 onClick={() => { worldRef.current?.reactAtTarget(emoji); setReactionsOpen(false); }}
               >
@@ -1470,11 +1460,17 @@ export default function PlaygroundPage() {
               </button>
             ))}
           </div>
-          {canPost ? (
+          {canPost || target?.kind === "mascot" || target?.kind === "guide" ? (
             <button
               type="button"
               className="pg-chat-open"
-              onClick={() => { setReactionsOpen(false); setChatting(true); }}
+              onClick={() => {
+                setReactionsOpen(false);
+                const npc = conversationNpc(target);
+                if (npc === "nagi") openGuide();
+                else if (npc) openNeighbor(npc);
+                else setChatting(true);
+              }}
             >
               Talk<kbd>↵</kbd>
             </button>
@@ -1497,14 +1493,20 @@ export default function PlaygroundPage() {
           aria-label="Crouch"
           onPress={toggleCrouch}
         >
-          Crouch
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="7" r="2" />
+            <path d="m11 10-3 4 5 2-3 5m1-11 4 3 4-1m-6 4 5 1 2 4M3 3v6m-2-2 2 2 2-2" />
+          </svg>
         </PressButton>
         <PressButton
           className="pg-action"
           aria-label="Jump"
           onPress={() => worldRef.current?.jump()}
         >
-          Jump
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+            <circle cx="13" cy="5" r="2" />
+            <path d="m12 8-2 5 4 3 1 5m-5-8-4 4-3-1m9-8-4 1-2-3m6 2 4 3 4-3M3 9V3m-2 2 2-2 2 2" />
+          </svg>
         </PressButton>
       </div>
 
