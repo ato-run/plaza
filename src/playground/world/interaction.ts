@@ -26,6 +26,11 @@ export type WorldTarget =
   | { kind: "app" | "activity"; ref: string; title: string }
   | { kind: "seat"; seatId: string; title: string };
 
+/** Conversations use Talk/Enter, never the object-interaction shortcut. */
+export function isConversationTarget(target: WorldTarget | null): boolean {
+  return target?.kind === "person" || target?.kind === "mascot" || target?.kind === "guide";
+}
+
 /** A stable identity for a target, for change detection. */
 export function targetKey(target: WorldTarget | null): string {
   if (!target) return "";
