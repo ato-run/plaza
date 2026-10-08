@@ -42,7 +42,7 @@ export function GuideDialog({ open, npc, context, start, onAction, onClose, useM
   const [thinking, setThinking] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   // One server conversation per opening of the dialog; ended when it closes.
-  const conversationRef = useRef<{ id: string; used: boolean } | null>(null);
+  const conversationRef = useRef<{ id: string; npcId: NpcProfile["id"]; used: boolean } | null>(null);
   const pendingRef = useRef<AbortController | null>(null);
 
   const endConversation = () => {
@@ -51,7 +51,7 @@ export function GuideDialog({ open, npc, context, start, onAction, onClose, useM
     setThinking(false);
     const conversation = conversationRef.current;
     conversationRef.current = null;
-    if (conversation?.used) endNpcConversation(npc.id, conversation.id);
+    if (conversation?.used) endNpcConversation(conversation.npcId, conversation.id);
   };
 
   useEffect(() => {
@@ -59,13 +59,14 @@ export function GuideDialog({ open, npc, context, start, onAction, onClose, useM
       endConversation();
       return;
     }
-    conversationRef.current = { id: newId("conv"), used: false };
+    endConversation();
+    conversationRef.current = { id: newId("conv"), npcId: npc.id, used: false };
     setCurrent(start);
     setAsked(null);
     setDraft("");
     panelRef.current?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, npc.id]);
 
   // Leaving the page mid-conversation still closes it server-side.
   useEffect(() => () => endConversation(), []);
@@ -145,7 +146,8 @@ export function GuideDialog({ open, npc, context, start, onAction, onClose, useM
         if (pendingRef.current !== controller || conversationRef.current !== conversation) return;
         // A closed or foreign conversation id: start a fresh one next time.
         if (error instanceof NpcChatError && /conversation_/.test(error.code)) {
-          conversationRef.current = { id: newId("conv"), used: false };
+          endConversation();
+    conversationRef.current = { id: newId("conv"), npcId: npc.id, used: false };
         }
         answerLocally(text);
       })
