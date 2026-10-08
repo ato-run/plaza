@@ -31,7 +31,7 @@ import {
   type Exhibit,
   type ExhibitCard,
 } from "./exhibit";
-import { resolveTarget, targetKey, type WorldTarget } from "./interaction";
+import { isConversationTarget, resolveTarget, targetKey, type WorldTarget } from "./interaction";
 import { circle, type Collider } from "./collision";
 import { DEFAULT_WORLD_ID, type Pose, type WorldId } from "./types";
 import { resolveOpenableWorld, worldDefinition } from "./worlds";
@@ -417,9 +417,11 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
     reactAtTarget(emoji) {
       if (!FACE_REACTION_EMOJI.has(emoji)) return;
       if (currentTarget?.kind === "mascot" || currentTarget?.kind === "guide") {
-        // A mascot is scenery. Letting a wave "succeed" at one would tell the
-        // sender somebody received it when nobody did.
-        hooks.onError("Neighbors don't take reactions. Try someone else nearby.");
+        if (currentTarget.kind === "mascot") {
+          engine.world?.neighbors?.react(currentTarget.mascotId, emoji);
+        } else {
+          engine.world?.guide?.say(`${emoji} Thank you! It's lovely to see you.`, 3500);
+        }
         return;
       }
       if (currentTarget?.kind !== "person") {
@@ -430,9 +432,9 @@ export function startWorld(host: HTMLDivElement, hooks: WorldHooks): WorldHandle
     },
 
     interactWithTarget() {
-      if (!currentTarget) return;
+      if (!currentTarget || isConversationTarget(currentTarget)) return;
+      // E is only for objects. Conversations use the shared Talk/Enter path.
       // A seat is the World's own business — it never reaches the page.
-      // Residents (mascots) and the guide open a conversation on the page.
       if (activateLocal(targetLocalId(currentTarget))) return;
       hooks.onInteract(currentTarget);
     },

@@ -45,9 +45,9 @@ const CONTROLS: readonly (readonly [string, string])[] = [
   ["W A S D", "Move"],
   ["Space", "Jump — onto the fountain, too"],
   ["C / Ctrl", "Crouch"],
-  ["E", "Interact with what you are facing"],
-  ["Enter", "Talk to people nearby"],
-  ["1 – 4", "React to the person you are facing"],
+  ["E", "Interact with seats and exhibits"],
+  ["Enter", "Talk to people, residents or Nagi"],
+  ["1 – 4", "React to whoever you are facing"],
   ["M", "Open this menu"],
 ];
 

@@ -1,3 +1,4 @@
+import { residentReaction } from "./reaction";
 /**
  * The residents in the scene: one merged, vertex-coloured mesh for each body
  * and one for each head (two draw calls a resident), animated with a
@@ -178,6 +179,7 @@ export interface Residents {
    * for this viewer only; then they walk back into their day.
    */
   hold(id: string, on: boolean): void;
+  react(id: string, emoji: string): void;
   dispose(): void;
 }
 
@@ -195,6 +197,7 @@ interface Live {
   /** Local overrides, in ms of Date.now(). */
   saying: { text: string; until: number } | null;
   facePlayerUntil: number;
+  reactionPause: { x: number; z: number; until: number } | null;
   greetedAt: number;
   placed: boolean;
   /** Where they stood when the last frame was drawn. */
@@ -250,6 +253,7 @@ export function createResidents(
       headYaw: 0,
       saying: null,
       facePlayerUntil: 0,
+      reactionPause: null,
       greetedAt: -Infinity,
       placed: false,
       last: { x: 0, z: 0, pose: "stand" },
@@ -282,7 +286,15 @@ export function createResidents(
       const nowMs = seconds * 1000;
       const states = live.map((resident, index) => {
         const state = { ...schedule.stateAt(index, seconds) };
-        if (resident.held) {
+        if (resident.reactionPause && nowMs >= resident.reactionPause.until) {
+          resident.rejoin = { x: resident.reactionPause.x, z: resident.reactionPause.z, from: nowMs };
+          resident.reactionPause = null;
+        }
+        if (resident.reactionPause && !resident.held) {
+          state.x = resident.reactionPause.x;
+          state.z = resident.reactionPause.z;
+          state.moving = false;
+        } else if (resident.held) {
           state.x = resident.held.x;
           state.z = resident.held.z;
           state.pose = resident.held.pose;
@@ -342,7 +354,6 @@ export function createResidents(
         // Greet the visitor who walks up, once in a while.
         if (resident.held) {
           resident.facePlayerUntil = nowMs + 1500;
-          resident.saying = null;
         }
         if (eye && !resident.held && toPlayer < 3.2 && nowMs - resident.greetedAt > 45000 && !resident.saying) {
           const greet = LINES[resident.spec.personality].greet;
@@ -429,11 +440,24 @@ export function createResidents(
       });
     },
 
+    react(id, emoji) {
+      const resident = live.find((entry) => entry.spec.id === id);
+      if (!resident) return;
+      const text = residentReaction(resident.spec.personality, emoji);
+      if (!text) return;
+      resident.saying = { text, until: Date.now() + 3500 };
+      if (!resident.held) {
+        resident.reactionPause = { x: resident.last.x, z: resident.last.z, until: Date.now() + 3500 };
+      }
+      resident.facePlayerUntil = Date.now() + 4000;
+    },
+
     hold(id, on) {
       const resident = live.find((entry) => entry.spec.id === id);
       if (!resident) return;
       if (on) {
         resident.rejoin = null;
+        resident.reactionPause = null;
         resident.held = { ...resident.last };
         return;
       }

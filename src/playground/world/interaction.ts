@@ -16,10 +16,8 @@ import type { Interactable } from "./types";
 /**
  * A resolved target.
  *
- * `person` and `mascot` look identical through a crosshair and are deliberately
- * distinct here: one is somebody who will see your 👋 arrive, the other is
- * scenery that says a canned line. Collapsing them would let a wave be sent to
- * nobody, with the sender believing it landed.
+ * People use the shared room lane; residents use private NPC conversations
+ * and local reaction acknowledgements. Both share the same targeting controls.
  */
 export type WorldTarget =
   | { kind: "person"; principalId: string; name: string }
@@ -27,6 +25,11 @@ export type WorldTarget =
   | { kind: "guide"; guideId: string; name: string }
   | { kind: "app" | "activity"; ref: string; title: string }
   | { kind: "seat"; seatId: string; title: string };
+
+/** Conversations use Talk/Enter, never the object-interaction shortcut. */
+export function isConversationTarget(target: WorldTarget | null): boolean {
+  return target?.kind === "person" || target?.kind === "mascot" || target?.kind === "guide";
+}
 
 /** A stable identity for a target, for change detection. */
 export function targetKey(target: WorldTarget | null): string {

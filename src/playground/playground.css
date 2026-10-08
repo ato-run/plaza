@@ -442,6 +442,12 @@ kbd {
   display: none;
 }
 
+.pg-action svg {
+  display: block;
+  margin: auto;
+  pointer-events: none;
+}
+
 @media (pointer: coarse) {
   .pg-joystick {
     display: block;
