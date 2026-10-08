@@ -20,3 +20,9 @@ Staging Discover was updated to schema `csch_discover_5412eecfad8b67c8d71b84d8`.
 ## Jump/Crouch icons follow-up
 
 Both touch controls use 26px decorative SVG figures instead of visible text. Accessible names, pressed state and existing touch-down handling are retained. TypeScript/production builds passed. Staging preserves compact controls and publishes commit `4a090923861ab686cbba95c1e959d6d5ef7cbfd3` as `caprev_plaza_0027` / `swm_plaza_aHUvmTufyuGkyXEx`, manifest `sha256:c0fbe9a516f93ff03d02ded19501b7374c5321f87cd5d07404e69a1c049a4af2`. All 56 objects and the manifest passed R2 readback verification.
+
+## Enter navigation follow-up
+
+Conversation targets (people, residents and Nagi) no longer show the floating Talk E interaction prompt. Enter and the bottom Talk control open their existing conversation path. Seats/exhibits retain their interaction prompt. The control menu explicitly lists people, residents and Nagi under Enter. TypeScript/production builds passed.
+
+Staging integration commit `729a0c0da2784b93b8ce8bfb1486636ec8f54e79` published as `caprev_plaza_0028` / `swm_plaza_GGWZzVcRouQpvB9c`, manifest `sha256:70d6dc5846ec0b3cfc6ea4032da0a2616be679aa3dbf2a9821f282ead9ae6ab6`. Existing verified immutable blobs were reused; all 56 objects and manifest were fetched from R2 and digest-verified again before publication.
