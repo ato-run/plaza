@@ -453,7 +453,7 @@ kbd {
     display: block;
     position: absolute;
     left: 26px;
-    bottom: calc(120px + env(safe-area-inset-bottom));
+    bottom: calc(76px + env(safe-area-inset-bottom));
     width: 104px;
     height: 104px;
     border-radius: 50%;
@@ -478,14 +478,14 @@ kbd {
     display: flex;
     position: absolute;
     right: 20px;
-    bottom: calc(220px + env(safe-area-inset-bottom));
+    bottom: calc(76px + env(safe-area-inset-bottom));
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
   }
 
   .pg-action {
-    width: 76px;
-    height: 76px;
+    width: 48px;
+    height: 48px;
     border-radius: 50%;
     border: 1px solid rgba(255, 255, 255, 0.69);
     background: rgba(255, 255, 255, 0.55);
@@ -1044,4 +1044,19 @@ kbd {
   .pg-guide-thinking span {
     animation: none;
   }
+}
+
+.pg-reactions-toggle { display: none; }
+.pg-explore-hint { position: absolute; left: 50%; bottom: 90px; transform: translateX(-50%); max-width: min(540px, 90%); display: flex; gap: 8px; align-items: center; background: #ffffffed; padding: 8px 12px; border-radius: 10px; font-size: 12px; color: #22403a; pointer-events: none; }
+.pg-explore-hint button { pointer-events: auto; border: 0; background: transparent; color: inherit; min-width: 44px; min-height: 44px; cursor: pointer; }
+@media (pointer: coarse) {
+  .pg-bottom { bottom: calc(12px + env(safe-area-inset-bottom)); left: 12px; right: 12px; }
+  .pg-talk { position: relative; padding: 4px; gap: 4px; }
+  .pg-talk .pg-chat-open { min-height: 44px; padding: 8px 16px; font-weight: 600; }
+  .pg-chat-open kbd { display: none; }
+  .pg-reactions-toggle { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; border: 0; border-radius: 50%; background: transparent; font-size: 24px; color: #22403a; cursor: pointer; }
+  .pg-reactions { display: none; position: absolute; right: 0; bottom: calc(100% + 8px); border-radius: 20px; background: #fffffff0; padding: 4px; box-shadow: 0 3px 16px #183a3420; }
+  .pg-reactions--open { display: flex; }
+  .pg-reactions button { min-width: 44px; min-height: 44px; justify-content: center; padding: 0; }
+  .pg-explore-hint { display: none; }
 }

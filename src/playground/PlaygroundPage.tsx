@@ -187,6 +187,9 @@ export default function PlaygroundPage() {
   const targetRef = useRef(target);
   targetRef.current = target;
   const [locked, setLocked] = useState(false);
+  const [exploreHintSeen, setExploreHintSeen] = useState(false);
+  const [exploreHint, setExploreHint] = useState(false);
+  const [reactionsOpen, setReactionsOpen] = useState(false);
   const [lookMode, setLookMode] = useState<"lock" | "drag">("lock");
   // How the place is lit for THIS viewer; remembered locally, never sent.
   const [timeOfDay, setTimeOfDay] = useState<string | null>(() => {
@@ -1047,6 +1050,12 @@ export default function PlaygroundPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!exploreHint) return;
+    const handle = window.setTimeout(() => setExploreHint(false), 8000);
+    return () => window.clearTimeout(handle);
+  }, [exploreHint]);
+
   // Push presence into the world. Expiry runs here rather than on a timer:
   // it only matters when something is being drawn.
   useEffect(() => {
@@ -1375,12 +1384,20 @@ export default function PlaygroundPage() {
           type="button"
           className="pg-enter"
           disabled={!worldReady}
-          onClick={() => worldRef.current?.requestPointerLock()}
+          onClick={() => {
+            if (!exploreHintSeen) { setExploreHint(true); setExploreHintSeen(true); }
+            worldRef.current?.requestPointerLock();
+          }}
         >
           {worldReady ? "Click to explore" : "Getting the plaza ready…"}
         </button>
       ) : null}
 
+
+      {exploreHint ? <div className="pg-explore-hint" role="status">
+        <span>WASD to move · {lookMode === "drag" ? "Drag to look" : "Mouse to look"} · Space to jump · {lookMode === "drag" ? "Esc to leave explore mode" : "Esc to release the mouse"}</span>
+        <button type="button" aria-label="Dismiss movement instructions" onClick={() => setExploreHint(false)}>✕</button>
+      </div> : null}
 
       <GuideDialog
         open={guideOpen}
@@ -1426,14 +1443,17 @@ export default function PlaygroundPage() {
         {/* Everything you say to people, in one place: reactions to whoever
             you face, and the message composer. */}
         <div className="pg-talk">
-          <div className="pg-reactions" role="group" aria-label="Reactions">
+          <button type="button" className="pg-reactions-toggle" aria-label="Reactions" aria-expanded={reactionsOpen}
+            onClick={() => setReactionsOpen(value => !value)}>☺</button>
+          <div className={`pg-reactions${reactionsOpen ? " pg-reactions--open" : ""}`} role="group" aria-label="Reactions">
             {PLAYGROUND_FACE_REACTIONS.map((emoji, index) => (
               <button
                 key={emoji}
                 type="button"
                 title={`${index + 1} · React to whoever you're facing`}
                 disabled={!canPost && target?.kind !== "mascot" && target?.kind !== "guide"}
-                onClick={() => worldRef.current?.reactAtTarget(emoji)}
+                aria-label={`React ${emoji}`}
+                onClick={() => { worldRef.current?.reactAtTarget(emoji); setReactionsOpen(false); }}
               >
                 <span aria-hidden="true">{emoji}</span>
                 <kbd>{index + 1}</kbd>
@@ -1445,6 +1465,7 @@ export default function PlaygroundPage() {
               type="button"
               className="pg-chat-open"
               onClick={() => {
+                setReactionsOpen(false);
                 const npc = conversationNpc(target);
                 if (npc === "nagi") openGuide();
                 else if (npc) openNeighbor(npc);

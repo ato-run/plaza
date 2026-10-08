@@ -15,7 +15,7 @@ ignore = ["node_modules", "dist"]
 
 [metadata]
 short_description = "One shared plaza. Walk, talk, and try what you find."
-description = "Ato Plaza is one shared lobby as a first-person 3D world. Each instance hosts its own room: walk, talk to the people near you, and open what you find. Apache-2.0, forkable from Discover."
+description = "Walk through a shared 3D plaza, meet people, and talk to those nearby. Each instance hosts its own room; open and try the apps you find. Apache-2.0, forkable from Discover."
 license = "Apache-2.0"
 tags = ["social", "3d", "realtime", "static", "oss"]
 
