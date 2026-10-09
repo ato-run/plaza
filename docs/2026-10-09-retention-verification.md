@@ -14,7 +14,7 @@ geometry・textureのCPU/GPU copy・mipmap・canvas・heapを見積もり、未�
 実Chromeのestimateは418,339,344 bytes（約399MiB）、deviceMemory=16GiBだった。
 host側は8GiB以上の場合だけ512MiB、他は256MiBを上限にする。OSのRSS硬上限ではない。
 
-API final `86c970e`、PWA final `7d85d04`に固定した通常cache再訪5回は
+API final `a30fcad`、PWA final `7d85d04`に固定した通常cache再訪5回は
 2.500/2.256/2.380/2.016/2.057秒（中央値2.256、最大2.500）。
 新しい親JS取得の最初の4.843秒も保存した。World構築約240〜257ms、初回CPU約187〜243msが残る。
 completeのmodel10/texture41は転送0 bytes。画質や資産は減らしていない。
