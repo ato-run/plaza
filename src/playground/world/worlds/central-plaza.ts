@@ -186,13 +186,6 @@ export const centralPlaza: WorldDefinition = {
     const assets = createBeachAssets(signal, quality.level === "high" ? 8 : 4);
     const scenery = builder.group();
     scenery.name = "beach-scenery";
-    void terrain.load(assets);
-    void placeRocks(scenery, assets, signal, (resource) =>
-      builder.trackResource(resource),
-    ).catch((error: unknown) => {
-      if (!(error instanceof LoadAborted))
-        console.warn("[plaza] rocks unavailable");
-    });
 
     // ---- planting --------------------------------------------------------
     // Palms stand exactly on the old trees' roots (their colliders are
@@ -325,6 +318,15 @@ export const centralPlaza: WorldDefinition = {
     let lastEye: Vector3 | undefined;
     const guideEye = new Vector3();
     return {
+      deferred: [
+        () => terrain.load(assets),
+        ...props.deferred,
+        () => placeRocks(scenery, assets, signal, (resource) =>
+          builder.trackResource(resource),
+        ).catch((error: unknown) => {
+          if (!(error instanceof LoadAborted)) console.warn("[plaza] rocks unavailable");
+        }),
+      ],
       colliders,
       interactables,
       openAir,
