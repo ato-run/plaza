@@ -174,6 +174,16 @@ The DOM-selected-state checks and ordinary manual Chrome flow passed. No claim
 about staging p50/p95 or sub-second end-to-end interaction follows from the
 local benchmark or these partial recordings.
 
+A direct Chrome-control pilot without Recorder/profiling subsequently verified
+room connection, Sunset selection and Shared clock restoration in one complete
+flow (7,973 ms of automation wall time, including tool round trips). A repeated
+attempt failed waiting for an iframe even though the tool's diagnostic reported
+a visible iframe. This is insufficient for a reliable cohort; the single flow
+is functional evidence only (`.tmp/staging-stable-action-results.json`). A final
+independent check confirmed the connected room and restored Shared clock; the
+normal page is saved as `.tmp/ripple-staging-final.png`. DevTools recording and
+viewport emulation have been stopped/reset. No benchmark process remains.
+
 The overall startup optimization remains incomplete: staging cold/warm,
 signed-in/out and static/Hosted navigation-to-action measurements are still
 required. The separate startup-experience proposal work has not started.
