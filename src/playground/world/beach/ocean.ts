@@ -33,7 +33,16 @@ const SWELL: ReadonlyArray<readonly [number, number, number, number]> = [
 /** Wind ripples: a tileable normal map baked once, sampled at two scales. */
 export function rippleTexture(size = 256): THREE.DataTexture {
   // Sum of waves with integer frequencies wraps exactly at the tile edge.
-  const waves: [number, number, number, number][] = [];
+  // Each wave has only `size` distinct phases. Bake those once instead of
+  // evaluating sine/cosine for every wave at every pixel (~6 million calls).
+  const waves: {
+    xPhase: Uint32Array;
+    yPhase: Uint32Array;
+    normalX: Float64Array;
+    normalY: Float64Array;
+    foam: Float64Array;
+  }[] = [];
+  const tau = Math.PI * 2;
   let seed = 7;
   const random = () => {
     seed = (seed * 16807) % 2147483647;
@@ -44,22 +53,37 @@ export function rippleTexture(size = 256): THREE.DataTexture {
     const ky = Math.round((random() * 2 - 1) * (3 + i * 0.6));
     if (kx === 0 && ky === 0) continue;
     const k = Math.hypot(kx, ky);
-    waves.push([kx, ky, 1 / Math.pow(k, 1.35), random() * Math.PI * 2]);
+    const amplitude = 1 / Math.pow(k, 1.35);
+    const phase = random() * Math.PI * 2;
+    const xPhase = new Uint32Array(size);
+    const yPhase = new Uint32Array(size);
+    const normalX = new Float64Array(size);
+    const normalY = new Float64Array(size);
+    const foam = new Float64Array(size);
+    for (let step = 0; step < size; step += 1) {
+      // Normalize negative frequencies before indexing the periodic tables.
+      xPhase[step] = ((kx * step) % size + size) % size;
+      yPhase[step] = ((ky * step) % size + size) % size;
+      const angle = tau * step / size;
+      const c = Math.cos(angle + phase) * amplitude * tau;
+      normalX[step] = kx * c;
+      normalY[step] = ky * c;
+      foam[step] = Math.sin(angle + phase * 1.7) * amplitude;
+    }
+    waves.push({ xPhase, yPhase, normalX, normalY, foam });
   }
   const data = new Uint8Array(size * size * 4);
-  const tau = Math.PI * 2;
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
-      const u = x / size;
-      const v = y / size;
       let dx = 0;
       let dy = 0;
       let foam = 0;
-      for (const [kx, ky, amplitude, phase] of waves) {
-        const c = Math.cos(tau * (kx * u + ky * v) + phase) * amplitude * tau;
-        dx += kx * c;
-        dy += ky * c;
-        foam += Math.sin(tau * (kx * u * 1 + ky * v) + phase * 1.7) * amplitude;
+      for (const wave of waves) {
+        let phase = wave.xPhase[x] + wave.yPhase[y];
+        if (phase >= size) phase -= size;
+        dx += wave.normalX[phase];
+        dy += wave.normalY[phase];
+        foam += wave.foam[phase];
       }
       const index = (y * size + x) * 4;
       data[index] = Math.max(0, Math.min(255, 128 + dx * 2.2));

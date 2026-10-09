@@ -100,10 +100,47 @@ revision (no throttling, existing cache) is saved locally as
 time mapped through the unchanged baseline source map attributes approximately
 531 ms to Three.js program first use, 374 ms to texture upload, 174 ms to
 `rippleTexture`, and 66 ms to `buildGrid`. Browser extensions also consume time.
-This single recording is diagnostic, not an interaction percentile. A CPU-only
-lookup-table prototype preserves every byte of the current 96/256-pixel ripple
-maps and substantially reduces generation time; it has not been implemented
-or deployed yet (`.tmp/profile-ripple-indexed.jsonl`).
+This single recording is diagnostic, not an interaction percentile. It led to
+the following additional change.
+
+## Procedural ripple generation
+
+The ripple normal/foam map uses integer frequencies, so each wave has only
+`size` distinct phases. Precomputed phase and amplitude tables replace the
+per-pixel sine/cosine calls (~6 million → ~24 thousand at 256 pixels). Tables
+are temporary to one invocation; texture data remains separately owned and
+disposed by each caller. No persistent cache, new file download, lower map
+resolution, shader change or GPU resource sharing is introduced.
+
+SHA-256 goldens captured before the change prove every byte is preserved at
+17, 96 and 256 pixels. Texture sampling and independent buffer ownership also
+pass. All 231 tests / 27 files, typecheck and build pass. The final initial
+bundle is 927.45 kB (269.67 kB gzip); the optional GLTF chunk remains 43.89 kB.
+
+A CPU-only prototype measured the 256-pixel direct calculation at 171–296 ms
+versus 33–95 ms with indexed tables (`.tmp/profile-ripple-indexed.jsonl`). This
+is a Node diagnostic, not a browser percentile.
+
+The browser comparison was then repeated with the native Chrome tab explicitly
+selected and visibility recorded throughout every sample. All 42 samples
+(40 measured + 2 warm priming) stayed visible. Same local harness/action as
+above, original baseline versus both changes, ten samples per cell:
+
+| Build | Cache | p50 | p95 |
+| --- | --- | ---: | ---: |
+| Original baseline | Cold | 1075.5 | 1131.2 |
+| Deferred assets + ripple tables | Cold | 749.4 | 805.0 |
+| Original baseline | Warm | 1051.0 | 1113.0 |
+| Deferred assets + ripple tables | Warm | 746.8 | 933.8 |
+
+These are local scripted lighting actions, not real staging navigation-to-input
+percentiles. An intervening batch ran behind an active staging 3D tab and was
+stopped; it is preserved as `.tmp/ripple-benchmark-background.json` and excluded.
+The earlier asset-only benchmark did not record visibility and is diagnostic
+only. Use the explicitly visible batch for the final local comparison.
+Evidence: `.tmp/ripple-benchmark.mjs`, `.tmp/ripple-benchmark-results.json`,
+`.tmp/ripple-benchmark-summary.json`, `.tmp/ripple-tests.log`,
+`.tmp/ripple-build.log`. Staging publication of the ripple change is pending.
 
 The overall startup optimization remains incomplete: staging cold/warm,
 signed-in/out and static/Hosted navigation-to-action measurements are still
