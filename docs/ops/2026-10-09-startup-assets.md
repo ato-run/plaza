@@ -63,9 +63,47 @@ that action. Evidence lives under `.tmp/`: `startup-benchmark.mjs`,
 
 ## Staging
 
-Pending operator publication from this clean, pushed branch and actual Chrome
-verification. Production, migrations, flags, Runner capacity and Formation
-are outside this rollout. The existing curation ledger must remain unchanged.
+Source `472454be1b9ee250ef67de31ef4393f666ed837a` on
+`perf/initial-load-optimization` was published through the existing staging
+operator lane. It rebuilt the clean pushed source, uploaded all 58 files,
+read every object back and checked its SHA-256 before marking the materialization
+ready. The existing Discover publication retained its thumbnail and now pins:
+
+- Revision: `caprev_plaza_0031`.
+- Materialization: `swm_plaza_BcbVbm246gcSuQGV`.
+- Manifest: `sha256:ddd4fa2ecc9417e2fddb6104b6a16e63b084ffd2ce9426bd568cd0ccaa9f23f8`.
+- Schema: `csch_discover_4be71bd945827eb0b63e5cb1`.
+
+Chrome reloaded `https://stg-app.ato.run/` and opened the new shared static
+Instance at `https://cinst-viqveiwlqslxi4wo.stg-app.ato.run/`. Its actual script
+tag references `index-CPyi3hKm.js` in the new manifest namespace. The World,
+scanned scenery and connected room rendered; Menu and Sunset selection worked.
+The local lighting override was then restored to Shared clock and Menu closed.
+Screenshot: `.tmp/startup-staging-chrome.png`. Unauthenticated direct reads
+of the Instance document and namespaced asset correctly returned 401; browser
+authorization was retained and not bypassed for byte inspection.
+
+API health and paged Discover return 200, and both unauthenticated curation
+routes return 401 rather than 404. Candidate counts remain 413 total (117 ready,
+225 queued, 50 needs_input, 18 unsupported, 3 failed), with zero active attempts.
+No migration was pending or applied. API/PWA/Runner were not redeployed; the
+active API Worker remains `afcf870a-a5b6-4fca-b4f7-3034e036a7a9` at 100%.
+No production, flags, Runner capacity, Formation or existing saved data changed.
+
+Publish, seed, deployment/migration checks and before/after D1 evidence are
+under the staging API worktree's `.tmp/plaza-startup-*`. PR: ato-run/plaza#18
+(Draft). No GitHub check runs were attached at verification time.
+
+An additional native Chrome Performance recording of the preceding staging
+revision (no throttling, existing cache) is saved locally as
+`.tmp/startup-staging-before.json.gz`. Over its 5.43-second trace, sampled CPU
+time mapped through the unchanged baseline source map attributes approximately
+531 ms to Three.js program first use, 374 ms to texture upload, 174 ms to
+`rippleTexture`, and 66 ms to `buildGrid`. Browser extensions also consume time.
+This single recording is diagnostic, not an interaction percentile. A CPU-only
+lookup-table prototype preserves every byte of the current 96/256-pixel ripple
+maps and substantially reduces generation time; it has not been implemented
+or deployed yet (`.tmp/profile-ripple-indexed.jsonl`).
 
 The overall startup optimization remains incomplete: staging cold/warm,
 signed-in/out and static/Hosted navigation-to-action measurements are still
