@@ -187,3 +187,19 @@ viewport emulation have been stopped/reset. No benchmark process remains.
 The overall startup optimization remains incomplete: staging cold/warm,
 signed-in/out and static/Hosted navigation-to-action measurements are still
 required. The separate startup-experience proposal work has not started.
+
+## Additional API-to-page observation — October 9
+
+Three later native Chrome warm reload traces on the existing signed-in staging
+profile measured first API request → initial viewport at 4.681, 4.237 and
+3.747 seconds (sample median 4.237 s). The viewport criterion includes header,
+Library, visible Discover cards, Plaza metadata and the actual 3D scene.
+Optional textures and connected controls can complete later. Two longer traces
+show connected controls at API +5.184/+5.474 s; no meaningful action was submitted.
+All 25 captured staging API requests returned 200/201. The first API batch takes
+1.874–2.651 s, followed by 1.823–2.030 s until initial viewport appearance.
+
+These are three warm observations under CPU/screenshot tracing, not first-visit
+or p95 acceptance. See ato-pwa `docs/ops/2026-10-09-api-to-page-measurement.md`.
+Raw evidence remains in the shared workspace at
+`.tmp/initial-load-optimization/page-load-20261009/`. No deployment changed.
