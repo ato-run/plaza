@@ -1243,11 +1243,11 @@ export default function PlaygroundPage() {
     syncOpenAir();
     world.setSettings(settings);
     setWorldReady(true);
-    const unregisterRetention = window.atoStartup.registerRetention({
+    const unregisterRetention = typeof window.atoStartup.registerRetention === "function" ? window.atoStartup.registerRetention({
       suspend: () => world.setPaused(true),
       resume: () => world.setPaused(false),
       memoryBytes: () => world.retainedBytes(),
-    });
+    }) : () => {};
     return () => {
       unregisterRetention();
       world.dispose();
