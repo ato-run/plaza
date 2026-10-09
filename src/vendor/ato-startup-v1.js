@@ -3,6 +3,58 @@
   if (window.atoStartup) return;
   var MAX_DEFERRED_TASKS = 32;
 
+  var milestones = Object.create(null), connection = null;
+  var work = Object.create(null);
+  function measure(stage, duration) {
+    if (typeof stage !== "string" || !/^[a-z-]{1,32}$/.test(stage) ||
+        typeof duration !== "number" || !Number.isFinite(duration) || duration < 0) throw new TypeError("Invalid startup work timing");
+    if (Object.keys(work).length < 8) work[stage] = duration;
+  }
+  var phases = ["script-ready", "first-render", "interactive", "connected", "first-action", "complete"];
+  function snapshot() {
+    var resources = typeof performance.getEntriesByType === "function" ? performance.getEntriesByType("resource") : [];
+    var groups = {};
+    resources.forEach(function (entry) {
+      // Query strings, origins and filenames never leave the app document.
+      var path = entry.name.split("?")[0];
+      var kind = /\.m?js$/.test(path) ? "script" : /\.(glb|gltf)$/.test(path) ? "model" : /\.(png|jpe?g|webp|ktx2?)$/.test(path) ? "texture" : "other";
+      var group = groups[kind] || (groups[kind] = { count: 0, transfer_bytes: 0, decoded_bytes: 0, cached: 0, unknown: 0, max_duration_ms: 0 });
+      group.count++; group.transfer_bytes += entry.transferSize || 0; group.decoded_bytes += entry.decodedBodySize || 0;
+      if (entry.transferSize === 0 && entry.decodedBodySize > 0) group.cached++;
+      if (!entry.transferSize && !entry.decodedBodySize) group.unknown++;
+      group.max_duration_ms = Math.max(group.max_duration_ms, entry.duration || 0);
+    });
+    var nav = typeof performance.getEntriesByType === "function" ? performance.getEntriesByType("navigation")[0] : null;
+    return { resources: groups, work: Object.assign({}, work), document: nav ? {
+      response_start_ms: nav.responseStart, response_end_ms: nav.responseEnd,
+      dom_interactive_ms: nav.domInteractive, load_ms: nav.loadEventEnd,
+      transfer_bytes: nav.transferSize, decoded_bytes: nav.decodedBodySize
+    } : null };
+  }
+  function send(phase) {
+    if (!connection) return;
+    connection.source.postMessage({ protocol: "ato.startup.v1", type: "milestone",
+      channel: connection.channel, phase: phase, at_ms: milestones[phase], time_origin_ms: performance.timeOrigin, telemetry: snapshot()
+    }, connection.origin);
+  }
+  function mark(phase) {
+    if (phases.indexOf(phase) < 0) throw new TypeError("Unknown startup milestone");
+    if (milestones[phase] !== undefined) return;
+    milestones[phase] = performance.now();
+    if (typeof performance.mark === "function") performance.mark("ato:app:" + phase);
+    send(phase);
+  }
+  window.addEventListener("message", function (event) {
+    var data = event.data;
+    if (!window.parent || window.parent === window || event.source !== window.parent ||
+        !/^https?:\/\//.test(event.origin) || data?.protocol !== "ato.startup.v1" || data.type !== "connect" ||
+        typeof data.channel !== "string" || data.channel.length > 80 || !data.channel.length) return;
+    connection = { source: event.source, origin: event.origin, channel: data.channel };
+    phases.forEach(function (phase) { if (milestones[phase] !== undefined) send(phase); });
+  });
+  mark("script-ready");
+  if (window.parent && window.parent !== window) window.parent.postMessage({ protocol: "ato.startup.v1", type: "available" }, "*");
+
   function cancelled(signal) {
     if (signal.aborted) throw signal.reason;
   }
@@ -93,6 +145,7 @@
       }
       cancelled(signal);
       report("complete");
+      mark("complete");
     }).catch(function (error) {
       report(signal.aborted ? "cancelled" : "failed");
       throw error;
@@ -105,5 +158,5 @@
     finished.catch(function () {});
     return Object.freeze({ ready: ready, finished: finished, cancel: cancel });
   }
-  window.atoStartup = Object.freeze({ version: 1, run: run });
+  window.atoStartup = Object.freeze({ version: 1, run: run, mark: mark, measure: measure });
 })();

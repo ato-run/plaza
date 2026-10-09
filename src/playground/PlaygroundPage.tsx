@@ -238,6 +238,14 @@ export default function PlaygroundPage() {
     setMenuFocus(section);
     setMenuOpen(true);
   }, []);
+  useEffect(() => {
+    if (connected) window.atoStartup.mark("connected");
+  }, [connected]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const frame = requestAnimationFrame(() => window.atoStartup.mark("first-action"));
+    return () => cancelAnimationFrame(frame);
+  }, [menuOpen]);
   const identityTimeoutRef = useRef<number | undefined>(undefined);
 
   // ---- Conversations (Nagi and the residents), lessons and journeys -------

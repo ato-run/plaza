@@ -104,6 +104,7 @@ const NO_COLLIDERS: readonly Collider[] = [];
 const JUMP_BUFFER_MS = 150;
 
 export function createEngine(options: EngineOptions): Engine {
+  const rendererStarted = performance.now();
   let settings = readSettings();
   const audio = createBeachAudio();
   audio.volume(settings.volume);
@@ -155,6 +156,7 @@ export function createEngine(options: EngineOptions): Engine {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.2;
   host.appendChild(renderer.domElement);
+  window.atoStartup.measure("renderer", performance.now() - rendererStarted);
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(64, width / height, 0.05, 110);
@@ -625,7 +627,9 @@ export function createEngine(options: EngineOptions): Engine {
         ? Math.sin(now * 0.009) * 0.016
         : 0;
     camera.position.y += bob;
+    const renderStarted = worldFirstFrame ? performance.now() : null;
     renderer.render(scene, camera);
+    if (renderStarted !== null) window.atoStartup.measure("first-frame", performance.now() - renderStarted);
     camera.position.y -= bob;
     // This is a render milestone, not proof of shared-state readiness or use.
     const rendered = worldFirstFrame;
@@ -676,6 +680,7 @@ export function createEngine(options: EngineOptions): Engine {
       worldRoot = root;
       worldBuilder = builder;
 
+      const buildStarted = performance.now();
       const runtime = definition.build({
         root,
         builder,
@@ -685,6 +690,7 @@ export function createEngine(options: EngineOptions): Engine {
         lighting,
         signal: abort.signal,
       });
+      window.atoStartup.measure("world", performance.now() - buildStarted);
       world = runtime;
       groundY = runtime.groundY ?? null;
 
