@@ -5,6 +5,14 @@
 
   var milestones = Object.create(null), connection = null;
   var work = Object.create(null);
+  var retention = null;
+  function registerRetention(contract) {
+    if (!contract || ["suspend", "resume", "memoryBytes"].some(function (key) { return typeof contract[key] !== "function"; }))
+      throw new TypeError("Expected suspension, resumption and memory estimate callbacks");
+    retention = Object.freeze({ suspend: contract.suspend, resume: contract.resume, memoryBytes: contract.memoryBytes });
+    var registered = retention;
+    return function () { if (retention === registered) retention = null; };
+  }
   function measure(stage, duration) {
     if (typeof stage !== "string" || !/^[a-z-]{1,32}$/.test(stage) ||
         typeof duration !== "number" || !Number.isFinite(duration) || duration < 0) throw new TypeError("Invalid startup work timing");
@@ -29,6 +37,14 @@
       response_start_ms: nav.responseStart, response_end_ms: nav.responseEnd,
       dom_interactive_ms: nav.domInteractive, load_ms: nav.loadEventEnd,
       transfer_bytes: nav.transferSize, decoded_bytes: nav.decodedBodySize
+      , network: ["workerStart", "fetchStart", "redirectStart", "redirectEnd", "domainLookupStart", "domainLookupEnd", "connectStart", "connectEnd", "secureConnectionStart", "requestStart", "responseStart", "responseEnd", "duration"].reduce(function (out, key) {
+        if (Number.isFinite(nav[key]) && nav[key] >= 0) out[key] = nav[key]; return out;
+      }, {}),
+      server: (nav.serverTiming || []).filter(function (item) { return /^ato_[a-z_]{1,64}$/.test(item.name); }).slice(0,40).map(function (item) {
+        var value = { name: item.name, duration: item.duration };
+        if (/^ato_(trace|request|queries|db_calls)$/.test(item.name) && /^[0-9a-f-]{1,36}$/i.test(item.description)) value.description = item.description;
+        return value;
+      })
     } : null };
   }
   function send(phase) {
@@ -158,5 +174,8 @@
     finished.catch(function () {});
     return Object.freeze({ ready: ready, finished: finished, cancel: cancel });
   }
-  window.atoStartup = Object.freeze({ version: 1, run: run, mark: mark, measure: measure });
+  window.atoStartup = Object.freeze({ version: 1, run: run, mark: mark, measure: measure,
+    registerRetention: registerRetention,
+    get retention() { return milestones.complete !== undefined ? retention : null; }
+  });
 })();

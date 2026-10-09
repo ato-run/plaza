@@ -85,6 +85,7 @@ export interface WorldHandle {
   dispose(): void;
   requestPointerLock(): void;
   setPaused(paused: boolean): void;
+  retainedBytes(): number;
   setSettings(settings: ExploreSettings): void;
   setOpenAir(
     state: OpenAirState,
@@ -435,6 +436,7 @@ export function startWorld(
 
     requestPointerLock: () => engine.requestPointerLock(),
     setPaused: (paused) => engine.setPaused(paused),
+    retainedBytes: () => engine.retainedBytes(),
     setSettings: (settings) => engine.setSettings(settings),
     setOpenAir(state, self, offset, connected) {
       const previous = shared;

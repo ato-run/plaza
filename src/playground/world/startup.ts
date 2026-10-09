@@ -11,6 +11,7 @@ declare global {
   interface Window {
     atoStartup: {
       readonly version: 1;
+      registerRetention(contract: { suspend(): void; resume(): void; memoryBytes(): number }): () => void;
       measure(stage: string, duration: number): void;
       mark(phase: "script-ready" | "first-render" | "interactive" | "connected" | "first-action" | "complete"): void;
       run(options: {

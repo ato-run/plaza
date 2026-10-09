@@ -79,6 +79,7 @@ export interface Engine {
   onFrame(handler: (frame: EngineFrame) => void): void;
   requestPointerLock(): void;
   setPaused(paused: boolean): void;
+  retainedBytes(): number;
   setSettings(settings: ExploreSettings): void;
   setJoystick(x: number, y: number): void;
   /** Touch jump button (keyboard uses Space). Ignored while paused. */
@@ -750,6 +751,31 @@ export function createEngine(options: EngineOptions): Engine {
     setSettings(next) {
       settings = next;
       audio.volume(next.volume);
+    },
+    retainedBytes() {
+      // Conservative budget estimate, including heap and GPU copies. It is
+      // admission guidance, not a browser-process RSS measurement.
+      let bytes = 64 * 1024 * 1024 + renderer.domElement.width * renderer.domElement.height * 16;
+      const geometries = new Set<THREE.BufferGeometry>(), textures = new Set<THREE.Texture>();
+      scene.traverse(object => {
+        const mesh = object as THREE.Mesh;
+        if (mesh.geometry) geometries.add(mesh.geometry);
+        const materials = mesh.material ? (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) : [];
+        for (const material of materials) for (const value of Object.values(material)) {
+          if (value instanceof THREE.Texture) textures.add(value);
+        }
+      });
+      for (const geometry of geometries) {
+        for (const attribute of Object.values(geometry.attributes)) bytes += attribute.array.byteLength * 2;
+        bytes += (geometry.index?.array.byteLength ?? 0) * 2;
+      }
+      for (const texture of textures) {
+        const image = texture.image as { width?: number; height?: number } | undefined;
+        if (!image?.width || !image.height) return Infinity;
+        bytes += image.width * image.height * 4 * (texture.generateMipmaps ? 3 : 2);
+      }
+      const heap = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize;
+      return Number.isFinite(heap) ? Math.max(bytes, heap!) : bytes;
     },
     setPaused(next) {
       if (next && !paused) resumeView = engaged();
