@@ -16,6 +16,7 @@ import { waterDepth } from "./beach/coast";
  * this running on a phone and not.
  */
 import * as THREE from "three";
+import { deferWorldAssets } from "./startup";
 
 import { blockingColliders, resolveMovement, type Collider } from "./collision";
 import { createWorldBuilder, type WorldBuilder } from "./primitives";
@@ -261,6 +262,7 @@ export function createEngine(options: EngineOptions): Engine {
   let world: WorldRuntime | null = null;
   /** Fires when the current World is unmounted; its late loads must stop. */
   let worldAbort: AbortController | null = null;
+  let worldFirstFrame: (() => void) | null = null;
   let worldRoot: THREE.Group | null = null;
   let worldBuilder: WorldBuilder | null = null;
   let groundY: ((x: number, z: number) => number) | null = null;
@@ -625,11 +627,16 @@ export function createEngine(options: EngineOptions): Engine {
     camera.position.y += bob;
     renderer.render(scene, camera);
     camera.position.y -= bob;
+    // This is a render milestone, not proof of shared-state readiness or use.
+    const rendered = worldFirstFrame;
+    worldFirstFrame = null;
+    rendered?.();
   }
 
   function unmountWorld(): void {
     worldAbort?.abort();
     worldAbort = null;
+    worldFirstFrame = null;
     world?.dispose();
     worldBuilder?.dispose();
     if (worldRoot) scene.remove(worldRoot);
@@ -701,6 +708,7 @@ export function createEngine(options: EngineOptions): Engine {
       // immediately rather than waiting out the cadence, or peers see the
       // arrival up to 83ms late in the wrong place.
       cadence.reset();
+      worldFirstFrame = deferWorldAssets(abort, runtime.deferred ?? []);
     },
 
     onFrame(handler) {

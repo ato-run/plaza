@@ -16,7 +16,7 @@
  * success here means real bytes of the right kind, not just a status code.
  */
 import * as THREE from "three";
-import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
+import type { GLTFLoader, GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 const BASE = `${import.meta.env.BASE_URL}assets/beach/`;
 const RETRIES = 2;
@@ -56,7 +56,7 @@ export function createBeachAssets(
   anisotropy: number,
 ): BeachAssets {
   const textures = new THREE.TextureLoader();
-  const models = new GLTFLoader();
+  let models: Promise<GLTFLoader> | undefined;
 
   return {
     async texture(name, colorSpace, options = {}) {
@@ -77,9 +77,14 @@ export function createBeachAssets(
     },
 
     async model(name) {
-      const gltf = await withRetry(signal, () =>
-        models.loadAsync(`${BASE}models/${name}`),
-      );
+      const gltf = await withRetry(signal, async () => {
+        models ??= import("three/examples/jsm/loaders/GLTFLoader.js")
+          .then(({ GLTFLoader }) => new GLTFLoader())
+          .catch((error: unknown) => { models = undefined; throw error; });
+        const loader = await models;
+        if (signal.aborted) throw new LoadAborted();
+        return loader.loadAsync(`${BASE}models/${name}`);
+      });
       if (signal.aborted) {
         disposeGltf(gltf);
         throw new LoadAborted();

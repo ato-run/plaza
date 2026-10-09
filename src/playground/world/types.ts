@@ -205,6 +205,8 @@ export interface WorldBuildContext {
 }
 
 export interface WorldRuntime {
+  /** Optional refinements, scheduled after this World's first rendered frame. */
+  deferred?: readonly import("./startup").DeferredWorldTask[];
   colliders: Collider[];
   /**
    * Fixed things the crosshair can find — mascots, seats. Software is NOT

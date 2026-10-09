@@ -547,6 +547,7 @@ function buildPost(
 // ---- assembly -------------------------------------------------------------------------
 
 export interface PlazaProps {
+  deferred: readonly import("../startup").DeferredWorldTask[];
   update(seconds: number): void;
 }
 
@@ -626,14 +627,15 @@ export function buildPlazaProps(
   };
   const posts = options.lanterns.map(([x, z]) => buildPost(builder, x, z, iron, postParts));
 
-  // Scanned surfaces and models arrive in the background.
-  void dress(limestone, "coral_fort_wall_01", options.assets, options.signal);
-  void dress(masonry, "coral_stone_wall", options.assets, options.signal);
-  void dress(wood, "fine_grained_wood", options.assets, options.signal);
-  void hangLanterns(builder, posts, options.assets, options.signal);
-  void plantPlanters(builder, planters, options.assets, options.signal);
-
   return {
+    // No requests during construction. The engine schedules these refinements.
+    deferred: [
+      () => dress(limestone, "coral_fort_wall_01", options.assets, options.signal),
+      () => dress(masonry, "coral_stone_wall", options.assets, options.signal),
+      () => dress(wood, "fine_grained_wood", options.assets, options.signal),
+      () => hangLanterns(builder, posts, options.assets, options.signal),
+      () => plantPlanters(builder, planters, options.assets, options.signal),
+    ],
     update(seconds) {
       fountain.update(seconds);
     },
