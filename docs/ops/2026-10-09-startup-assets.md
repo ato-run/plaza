@@ -1,4 +1,4 @@
-# Defer optional world assets
+# Reduce world startup work
 
 The first render previously competed with 51 beach image/model requests and a
 statically imported GLTF loader. The procedural World, colliders, input,
@@ -140,7 +140,39 @@ The earlier asset-only benchmark did not record visibility and is diagnostic
 only. Use the explicitly visible batch for the final local comparison.
 Evidence: `.tmp/ripple-benchmark.mjs`, `.tmp/ripple-benchmark-results.json`,
 `.tmp/ripple-benchmark-summary.json`, `.tmp/ripple-tests.log`,
-`.tmp/ripple-build.log`. Staging publication of the ripple change is pending.
+`.tmp/ripple-build.log`.
+
+The additional change was published from
+`7cb70be9332cc84f4551332e642edd1f1d526b84` through the same staging operator lane.
+All 58 files (17,880,003 bytes) were read back and SHA-256 verified. Discover
+retained its thumbnail and now pins revision `caprev_plaza_0032`, materialization
+`swm_plaza_a9-4dgA-UABH_EGy`, schema `csch_discover_99cbcf735bad8e615d3c3a37`, and
+manifest `sha256:dbb9eb8fe2214a08a12b235d46ab89f451b3a3dc275863c455540c1f462ab31c`.
+Chrome loads `index-CJS8TK1h.js` under that namespace at
+`https://cinst-ye737quz7fevlehx.stg-app.ato.run/`. The room connected, Sunset
+became selected, and Shared clock was restored before closing Menu. Screenshot:
+`.tmp/ripple-staging-chrome.png`. Curation counts and zero active attempts match
+the first publication. API/PWA/Runner deployments and flags were not changed.
+Operator evidence is in the staging API worktree's `.tmp/plaza-ripple-*`.
+
+## Real browser measurement still open
+
+Native Chrome DevTools Recorder captured navigation, Menu, a lighting change,
+its selected-state assertion and restoration. A pilot on revision 31 reached
+Sunset's next paint 6269.9 ms after top-level navigation (including Recorder
+and Performance profiling overhead). This single diagnostic exposed waits
+before iframe startup and is not a p95 result.
+
+Repeated flows did not produce a complete ten-sample cohort. One stopped when
+the previous lighting selection survived immediate navigation despite the
+restore assertion. An explicit reset fixed that precondition, but Recorder
+then failed with `Cannot find context with specified id` while crossing iframe
+navigations, including when navigating through a blank document between runs.
+The source recording, attempted flows and partial traces are retained under
+`.tmp/staging-action-*`; incomplete batches are excluded from acceptance.
+The DOM-selected-state checks and ordinary manual Chrome flow passed. No claim
+about staging p50/p95 or sub-second end-to-end interaction follows from the
+local benchmark or these partial recordings.
 
 The overall startup optimization remains incomplete: staging cold/warm,
 signed-in/out and static/Hosted navigation-to-action measurements are still
