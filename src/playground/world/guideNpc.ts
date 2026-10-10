@@ -22,7 +22,11 @@ export interface GuideNpc {
   label: HTMLElement;
   anchor: THREE.Vector3;
   labelPosition: THREE.Vector3;
-  update(now: number, eye: THREE.Vector3 | undefined, reducedMotion: boolean): void;
+  update(
+    now: number,
+    eye: THREE.Vector3 | undefined,
+    reducedMotion: boolean,
+  ): void;
   /** Move her (she strolls near her post); `walking` adds a gait. */
   place(x: number, z: number, yaw: number, walking: boolean): void;
   say(text: string, now: number, durationMs?: number): void;
@@ -36,6 +40,7 @@ export function createGuideNpc(
 ): GuideNpc {
   const group = builder.group();
   group.name = "guide:nagi";
+  group.userData.interactionTargets = [`guide:${GUIDE_ID}`];
   group.position.set(spec.x, 0, spec.z);
   group.rotation.y = spec.yaw;
 
@@ -77,11 +82,17 @@ export function createGuideNpc(
   builder.box(0.045, 0.05, 0.012, "#2f3530", 0.09, 0.01, 0.196, head);
   builder.box(0.12, 0.025, 0.012, "#b8735f", 0, -0.1, 0.196, head);
   const straw = builder.material("#d8bd84", { roughness: 0.95 });
-  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.44, 0.03, 28), straw);
+  const brim = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.42, 0.44, 0.03, 28),
+    straw,
+  );
   brim.position.y = 0.25;
   brim.castShadow = true;
   builder.track(brim, head);
-  const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.23, 0.17, 24), straw);
+  const crown = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.2, 0.23, 0.17, 24),
+    straw,
+  );
   crown.position.y = 0.34;
   crown.castShadow = true;
   builder.track(crown, head);
@@ -119,7 +130,10 @@ export function createGuideNpc(
       base.x = x;
       base.z = z;
       walking = isWalking;
-      const delta = Math.atan2(Math.sin(nextYaw - yaw), Math.cos(nextYaw - yaw));
+      const delta = Math.atan2(
+        Math.sin(nextYaw - yaw),
+        Math.cos(nextYaw - yaw),
+      );
       yaw += delta * 0.12;
       group.rotation.y = yaw;
       npc.anchor.set(x, 1.45, z);
@@ -149,7 +163,8 @@ export function createGuideNpc(
           npc.say(spec.greeting, now);
         }
       }
-      head.rotation.y += (target - head.rotation.y) * (reducedMotion ? 1 : 0.08);
+      head.rotation.y +=
+        (target - head.rotation.y) * (reducedMotion ? 1 : 0.08);
       if (reducedMotion) {
         group.position.set(base.x, 0, base.z);
         return;

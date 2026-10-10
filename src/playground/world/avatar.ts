@@ -37,7 +37,9 @@ export function labelHeightForPose(pose: "stand" | "sit" | "crouch"): number {
 }
 
 /** Crosshair anchor height above the feet (head), by pose. */
-export function personAnchorHeightForPose(pose: "stand" | "sit" | "crouch"): number {
+export function personAnchorHeightForPose(
+  pose: "stand" | "sit" | "crouch",
+): number {
   return pose === "crouch" ? 1.2 : 1.55;
 }
 
@@ -101,6 +103,7 @@ export function createAvatar(
   displayName: string,
 ): Avatar {
   const group = new THREE.Group();
+  group.userData.interactionTargets = [`person:${principalId}`];
   scene.add(group);
 
   const shirt = colorFor(principalId);
@@ -177,7 +180,10 @@ export function createAvatar(
  * sliding in from the middle of the plaza when a roster arrives, which reads
  * as everyone teleporting rather than as everyone already being there.
  */
-export function receiveTransform(avatar: Avatar, transform: RemoteTransform): void {
+export function receiveTransform(
+  avatar: Avatar,
+  transform: RemoteTransform,
+): void {
   // `y` is the sender's EYE height; a body stands that far below its own eyes.
   // It used to be ignored, which was harmless while every World was flat and
   // wrong the moment one had a raised deck: two people on different floors of

@@ -327,6 +327,7 @@ export function createResidents(
     const look = LOOKS[spec.species];
     const group = builder.group();
     group.name = `resident:${spec.id}`;
+    group.userData.interactionTargets = [`mascot:${spec.id}`];
     const body = new THREE.Mesh(
       merged(bodyGeometry(look, spec.shirt)),
       material,

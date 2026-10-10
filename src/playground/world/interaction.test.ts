@@ -7,7 +7,12 @@ import {
   MeshBasicMaterial,
   Raycaster,
 } from "three";
-import { resolveTarget, occludesTarget } from "./interaction";
+import {
+  resolveTarget,
+  occludesTarget,
+  targetKey,
+  type WorldTarget,
+} from "./interaction";
 import type { Interactable } from "./types";
 const eye = new Vector3(0, 1.6, 0),
   forward = new Vector3(0, 0, -1);
@@ -19,6 +24,47 @@ const small = (id: string, x: number, z: number): Interactable => ({
   maxDistance: 3.2,
 });
 describe("visible and stable physical selection", () => {
+  it.each<WorldTarget>([
+    { kind: "guide", guideId: "nagi", name: "Nagi" },
+    { kind: "mascot", mascotId: "koala", name: "Sora" },
+    { kind: "person", principalId: "visitor", name: "Visitor" },
+  ])(
+    "keeps a character target visible through its own model: $kind",
+    (target) => {
+      const character = new Group();
+      character.userData.interactionTargets = [targetKey(target)];
+      const head = new Mesh(
+        new BoxGeometry(0.85, 0.85, 0.85),
+        new MeshBasicMaterial(),
+      );
+      head.position.set(0, 1.45, -2);
+      character.add(head);
+      character.updateMatrixWorld(true);
+      const point = new Vector3(0, 1.45, -2),
+        direction = point.clone().sub(eye).normalize();
+      const hits = new Raycaster(
+        eye,
+        direction,
+        0,
+        eye.distanceTo(point) - 0.32,
+      ).intersectObject(character, true);
+      expect(hits.length).toBeGreaterThan(0);
+      expect(hits.some((hit) => occludesTarget(hit.object, target))).toBe(
+        false,
+      );
+      expect(
+        hits.some((hit) =>
+          occludesTarget(hit.object, {
+            kind: "object",
+            objectId: "shell",
+            title: "Shell",
+          }),
+        ),
+      ).toBe(true);
+      head.geometry.dispose();
+      head.material.dispose();
+    },
+  );
   it("selects a seat through its own backrest while the same furniture hides other targets", () => {
     const bench = new Group();
     bench.userData.interactionTargets = ["seat:camp-seat-0"];
