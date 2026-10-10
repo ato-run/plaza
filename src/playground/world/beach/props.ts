@@ -533,12 +533,13 @@ function buildBench(
   wood: Surface,
   iron: THREE.Material,
   parts: { wood: THREE.BufferGeometry; iron: THREE.BufferGeometry },
-): void {
+): THREE.Group {
   const group = builder.group();
   group.position.set(x, 0, z);
   group.rotation.y = rotation;
   add(builder, group, parts.wood, wood.material);
   add(builder, group, parts.iron, iron);
+  return group;
 }
 
 /** One bench end frame: legs, seat rail, back upright, armrest (ends only show it). */
@@ -632,6 +633,7 @@ export function buildPlazaProps(
   builder: WorldBuilder,
   options: {
     benches: readonly (readonly [number, number, number])[];
+    seats?: readonly { id: string; x: number; z: number }[];
     planters: readonly (readonly [number, number])[];
     lanterns: readonly (readonly [number, number])[];
     assets: BeachAssets;
@@ -662,7 +664,12 @@ export function buildPlazaProps(
 
   const benchParts = benchGeometries(wood);
   for (const [x, z, rotation] of options.benches) {
-    buildBench(builder, x, z, rotation, wood, iron, benchParts);
+    const group = buildBench(builder, x, z, rotation, wood, iron, benchParts);
+    group.userData.interactionTargets = (options.seats ?? [])
+      .filter(
+        (seat) => Math.abs(seat.x - x) < 1.3 && Math.abs(seat.z - z) < 0.35,
+      )
+      .map((seat) => `seat:${seat.id}`);
   }
 
   const planterParts = {

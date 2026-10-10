@@ -42,6 +42,7 @@ import {
 } from "./exhibit";
 import {
   isConversationTarget,
+  occludesTarget,
   resolveTarget,
   targetKey,
   type WorldTarget,
@@ -317,7 +318,7 @@ export function startWorld(
       forward,
       people,
       engine.world?.interactables ?? [],
-      (point) => {
+      (point, target) => {
         const direction = new THREE.Vector3(point.x, point.y, point.z).sub(
           engine.camera.position,
         );
@@ -326,30 +327,7 @@ export function startWorld(
         sightRay.far = Math.max(0, distance - 0.32);
         return !sightRay
           .intersectObjects(engine.scene.children, true)
-          .some((hit) => {
-            const mesh = hit.object as THREE.Mesh;
-            if (
-              !mesh.isMesh ||
-              mesh === selection ||
-              mesh.userData.nonOccluding
-            )
-              return false;
-            for (
-              let parent: THREE.Object3D | null = mesh;
-              parent;
-              parent = parent.parent
-            )
-              if (!parent.visible) return false;
-            const materials = Array.isArray(mesh.material)
-              ? mesh.material
-              : [mesh.material];
-            return materials.some(
-              (material) =>
-                material.opacity > 0.85 &&
-                material.depthWrite &&
-                material.side !== THREE.BackSide,
-            );
-          });
+          .some((hit) => occludesTarget(hit.object, target, selection));
       },
       now < targetHeldUntil ? previousTarget : null,
     );

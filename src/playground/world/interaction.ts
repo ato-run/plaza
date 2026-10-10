@@ -8,7 +8,7 @@
  * place that knows a mascot and a person are targeted the same way but acted
  * on differently.
  */
-import type * as THREE from "three";
+import * as THREE from "three";
 
 import { chooseTarget, type TargetCandidate } from "./worldMath";
 import type { Interactable } from "./types";
@@ -53,6 +53,36 @@ export function targetKey(target: WorldTarget | null): string {
     default:
       return `${target.kind}:${target.ref}`;
   }
+}
+
+/** Furniture can contain its own affordance without hiding unrelated targets. */
+export function occludesTarget(
+  object: THREE.Object3D,
+  target: WorldTarget,
+  selection?: THREE.Object3D,
+): boolean {
+  const mesh = object as THREE.Mesh;
+  if (!mesh.isMesh || mesh === selection || mesh.userData.nonOccluding)
+    return false;
+  const key = targetKey(target);
+  for (
+    let parent: THREE.Object3D | null = mesh;
+    parent;
+    parent = parent.parent
+  ) {
+    if (!parent.visible) return false;
+    const ownTargets = parent.userData.interactionTargets;
+    if (Array.isArray(ownTargets) && ownTargets.includes(key)) return false;
+  }
+  const materials = Array.isArray(mesh.material)
+    ? mesh.material
+    : [mesh.material];
+  return materials.some(
+    (material) =>
+      material.opacity > 0.85 &&
+      material.depthWrite &&
+      material.side !== THREE.BackSide,
+  );
 }
 
 /**
@@ -132,6 +162,7 @@ export function resolveTarget(
   interactables: readonly Interactable[],
   visible: (
     position: TargetCandidate<WorldTarget>["position"],
+    target: WorldTarget,
   ) => boolean = () => true,
   preferred?: WorldTarget | null,
 ): WorldTarget | null {
@@ -156,7 +187,8 @@ export function resolveTarget(
         candidate.position.x - eye.x,
         candidate.position.y - eye.y,
         candidate.position.z - eye.z,
-      ) <= (candidate.maxDistance ?? 3.4) && visible(candidate.position),
+      ) <= (candidate.maxDistance ?? 3.4) &&
+      visible(candidate.position, candidate.item),
   );
   const previous = eligible.find(
     (candidate) => targetKey(candidate.item) === targetKey(preferred ?? null),

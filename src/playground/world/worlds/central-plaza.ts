@@ -1,7 +1,7 @@
 import { Vector3 } from "three";
 import { lifeSchedule } from "../openAir/life";
 import { createOpenAir } from "../openAir/scene";
-import { landmarkGround, CAMP_BENCHES } from "../openAir/layout";
+import { landmarkGround, CAMP_BENCHES, CAMP_SEATS } from "../openAir/layout";
 import { worldMoment } from "../openAir/clock";
 import { overlaps } from "../collision";
 /**
@@ -207,6 +207,7 @@ export const centralPlaza: WorldDefinition = {
     // with scanned surfaces, on the same footprints and colliders as before.
     const props = buildPlazaProps(builder, {
       benches: [...CENTRAL_BENCHES, ...CAMP_BENCHES],
+      seats: CAMP_SEATS,
       planters: CENTRAL_PLANTERS,
       lanterns: CENTRAL_LANTERNS,
       assets,

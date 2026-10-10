@@ -1,6 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { Vector3 } from "three";
-import { resolveTarget } from "./interaction";
+import {
+  Vector3,
+  Group,
+  Mesh,
+  BoxGeometry,
+  MeshBasicMaterial,
+  Raycaster,
+} from "three";
+import { resolveTarget, occludesTarget } from "./interaction";
 import type { Interactable } from "./types";
 const eye = new Vector3(0, 1.6, 0),
   forward = new Vector3(0, 0, -1);
@@ -12,6 +19,64 @@ const small = (id: string, x: number, z: number): Interactable => ({
   maxDistance: 3.2,
 });
 describe("visible and stable physical selection", () => {
+  it("selects a seat through its own backrest while the same furniture hides other targets", () => {
+    const bench = new Group();
+    bench.userData.interactionTargets = ["seat:camp-seat-0"];
+    const back = new Mesh(
+      new BoxGeometry(2.6, 0.6, 0.15),
+      new MeshBasicMaterial(),
+    );
+    back.position.set(0, 0.8, -1.65);
+    bench.add(back);
+    bench.updateMatrixWorld(true);
+    const seat: Interactable = {
+      kind: "seat",
+      id: "camp-seat-0",
+      title: "Sit",
+      anchor: new Vector3(0, 0.56, -2),
+      maxDistance: 2.5,
+    };
+    const direction = seat.anchor.clone().sub(eye).normalize();
+    const ray = new Raycaster(
+      eye,
+      direction,
+      0,
+      eye.distanceTo(seat.anchor) - 0.32,
+    );
+    const hits = ray.intersectObject(bench, true);
+    expect(hits.length).toBeGreaterThan(0);
+    const visible = (
+      _point: { x: number; y: number; z: number },
+      target: Parameters<typeof occludesTarget>[1],
+    ) => !hits.some((hit) => occludesTarget(hit.object, target));
+    expect(resolveTarget(eye, direction, [], [seat], visible)).toMatchObject({
+      seatId: seat.id,
+    });
+    expect(
+      visible(seat.anchor, {
+        kind: "object",
+        objectId: "shell",
+        title: "Pick up shell",
+      }),
+    ).toBe(false);
+    expect(
+      visible(seat.anchor, {
+        kind: "seat",
+        seatId: "camp-seat-2",
+        title: "Sit",
+      }),
+    ).toBe(false);
+    bench.visible = false;
+    expect(
+      visible(seat.anchor, {
+        kind: "object",
+        objectId: "shell",
+        title: "Pick up shell",
+      }),
+    ).toBe(true);
+    back.geometry.dispose();
+    back.material.dispose();
+  });
   it("does not select an otherwise eligible object through an obstruction", () => {
     expect(
       resolveTarget(eye, forward, [], [small("shell", 0, -2)], () => false),
