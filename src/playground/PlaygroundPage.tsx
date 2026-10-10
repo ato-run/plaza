@@ -339,6 +339,7 @@ export default function PlaygroundPage() {
             event.actor_id,
             interaction.action,
           );
+          syncOpenAir();
           if (!interaction.quiet) {
             showInteractionFeedback(
               success
