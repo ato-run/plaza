@@ -42,6 +42,7 @@ import {
 } from "./exhibit";
 import {
   isConversationTarget,
+  occludesTarget,
   resolveTarget,
   targetKey,
   type WorldTarget,
@@ -50,7 +51,7 @@ import { circle, type Collider } from "./collision";
 import { DEFAULT_WORLD_ID, type Pose, type WorldId } from "./types";
 import { resolveOpenableWorld, worldDefinition } from "./worlds";
 import type { MovementState } from "./worldMath";
-import { reportEyeY } from "./worldMath";
+import { reportEyeY, EYE_HEIGHT } from "./worldMath";
 import type { PresenceMember } from "../presenceStore";
 
 export type { ExhibitCard } from "./exhibit";
@@ -95,6 +96,12 @@ export interface WorldHandle {
   ): void;
   exploreStatus(): ExploreStatus;
   useHeld(throwing: boolean): void;
+  charge(on: boolean): void;
+  cancelCharge(): void;
+  rotateHeld(): void;
+  mark(): void;
+  stopEscort(): void;
+  feedback(text: string, pending?: boolean): void;
   deliver(): void;
   escort(id: ResidentId, goal: "pools" | "camp" | "pier" | "lookout"): void;
   residentPosition(id: string): { x: number; z: number } | null;
@@ -121,7 +128,7 @@ export interface WorldHandle {
   /** Mobile joystick, normalized to [-1, 1]. */
   setJoystick(x: number, y: number): void;
   /** Touch jump button. Keyboard uses Space. */
-  jump(): void;
+  jump(held?: boolean): void;
   /** Touch crouch toggle. Keyboard holds C / Control. */
   setCrouching(crouching: boolean): void;
   /** Lighting mood for this viewer only; see `WorldEnvironment.timesOfDay`. */
@@ -249,18 +256,42 @@ export function startWorld(
     hooks.onWorldChange(worldId);
   }
 
+  const sightRay = new THREE.Raycaster();
+  let targetHeldUntil = 0;
   engine.onFrame(({ now, dt, movement, pose, forward }) => {
     pulseWaypoint(now);
     const peerPositions = new Map(
       [...avatars.values()].map((a) => [
         a.principalId,
-        { x: a.group.position.x, z: a.group.position.z },
+        {
+          x: a.group.position.x,
+          y: a.group.position.y + EYE_HEIGHT,
+          z: a.group.position.z,
+          yaw: a.group.rotation.y,
+        },
       ]),
     );
+    // First-person visitors have no drawn avatar, but companions still need their pose.
+    const viewer = {
+      x: engine.camera.position.x,
+      y: engine.camera.position.y,
+      z: engine.camera.position.z,
+      yaw: engine.camera.rotation.y,
+    };
+    if (own) peerPositions.set(own, viewer);
+    if (selfPrincipalId) peerPositions.set(selfPrincipalId, viewer);
     for (const [social, actor] of peerAliases) {
       const p = peerPositions.get(actor);
       if (p) peerPositions.set(social, p);
     }
+    for (const item of engine.world?.interactables ?? [])
+      if (item.kind === "mascot" || item.kind === "guide")
+        peerPositions.set(item.id, {
+          x: item.anchor.x,
+          z: item.anchor.z,
+          y: item.anchor.y,
+          yaw: 0,
+        });
     engine.world?.openAir?.setPeers(peerPositions);
     if (engine.cadenceDue(now)) {
       hooks.onTransform({
@@ -290,16 +321,35 @@ export function startWorld(
         z: avatar.group.position.z,
       },
     }));
+    const previousTarget = currentTarget;
     currentTarget = resolveTarget(
       engine.camera.position,
       forward,
       people,
       engine.world?.interactables ?? [],
+      (point, target) => {
+        const direction = new THREE.Vector3(point.x, point.y, point.z).sub(
+          engine.camera.position,
+        );
+        const distance = direction.length();
+        sightRay.set(engine.camera.position, direction.normalize());
+        sightRay.far = Math.max(0, distance - 0.32);
+        return !sightRay
+          .intersectObjects(engine.scene.children, true)
+          .some((hit) => occludesTarget(hit.object, target, selection));
+      },
+      now < targetHeldUntil ? previousTarget : null,
+    );
+    if (targetKey(previousTarget) !== targetKey(currentTarget))
+      targetHeldUntil = now + 160;
+    engine.world?.openAir?.highlight(
+      currentTarget?.kind === "object" ? currentTarget.objectId : null,
     );
     selection.visible =
       currentTarget?.kind === "mascot" ||
       currentTarget?.kind === "guide" ||
-      currentTarget?.kind === "person";
+      currentTarget?.kind === "person" ||
+      currentTarget?.kind === "object";
     if (selection.visible) {
       const anchor =
         currentTarget?.kind === "person"
@@ -311,12 +361,17 @@ export function startWorld(
                   ? currentTarget.mascotId
                   : currentTarget?.kind === "guide"
                     ? currentTarget.guideId
-                    : ""),
+                    : currentTarget?.kind === "object"
+                      ? currentTarget.objectId
+                      : ""),
             )?.anchor;
+      selection.scale.setScalar(currentTarget?.kind === "object" ? 0.32 : 1);
       if (anchor)
         selection.position.set(
           anchor.x,
-          (engine.world?.groundY?.(anchor.x, anchor.z) ?? 0) + 0.035,
+          currentTarget?.kind === "object"
+            ? anchor.y + 0.04
+            : (engine.world?.groundY?.(anchor.x, anchor.z) ?? 0) + 0.035,
           anchor.z,
         );
     }
@@ -334,8 +389,21 @@ export function startWorld(
       anchor.y += labelHeightForPose(avatar.pose);
       placeLabel(avatar.label, anchor);
     }
+    const bubbleRects: DOMRect[] = [];
     for (const label of engine.world?.labels ?? []) {
       placeLabel(label.element, label.position);
+      const bubble = label.element.querySelector<HTMLElement>(".pg-speech");
+      if (!bubble || bubble.style.display === "none") continue;
+      const rect = bubble.getBoundingClientRect();
+      const blocked = bubbleRects.some(
+        (other) =>
+          rect.left < other.right + 12 &&
+          rect.right > other.left - 12 &&
+          rect.top < other.bottom + 12 &&
+          rect.bottom > other.top - 12,
+      );
+      bubble.style.visibility = blocked ? "hidden" : "visible";
+      if (!blocked) bubbleRects.push(rect);
     }
   });
 
@@ -467,6 +535,15 @@ export function startWorld(
         connected: false,
         seated: null,
       },
+    cancelCharge: () => engine.world?.openAir?.cancelCharge(),
+    charge: (on) => engine.world?.openAir?.charge(on),
+    rotateHeld: () => engine.world?.openAir?.rotateHeld(),
+    mark: () => engine.world?.openAir?.mark(),
+    stopEscort: () => engine.world?.openAir?.stopEscort(),
+    feedback(text, pending = false) {
+      engine.world?.openAir?.feedback(text);
+      engine.world?.openAir?.pending(pending);
+    },
     useHeld: (throwing) => engine.world?.openAir?.useHeld(throwing),
     deliver: () => engine.world?.openAir?.deliver(),
     escort: (id, goal) => engine.world?.openAir?.escort(id, goal),
@@ -477,7 +554,7 @@ export function startWorld(
       return anchor ? { x: anchor.x, z: anchor.z } : null;
     },
     setJoystick: (x, y) => engine.setJoystick(x, y),
-    jump: () => engine.jump(),
+    jump: (held) => engine.jump(held),
     setCrouching: (crouching) => engine.setCrouching(crouching),
     setTimeOfDay: (id) => engine.setTimeOfDay(id),
     currentWorld: () => worldId,

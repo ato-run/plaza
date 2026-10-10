@@ -190,7 +190,7 @@ describe("ordered shared exploration", () => {
     expect(JSON.stringify(state)).not.toContain("message");
   });
   it("floating objects and sinking objects agree with water depth", () => {
-    const saved = { owner: null, at, x: 0, z: -40, vx: 0, vz: 0 };
+    const saved = { owner: null, at, x: 0, z: -44, vx: 0, vz: 0 };
     const wood = ITEMS.find((i) => i.kind === "wood")!,
       stone = ITEMS.find((i) => i.kind === "stone")!;
     expect(itemPosition(wood, saved, at + 1000).y).toBeGreaterThan(
@@ -284,7 +284,7 @@ describe("delivery and replay safety", () => {
       saved = { owner: null, at, x: 0, z: 5, vx: 0, vz: -6 };
     const end = itemPosition(stone, saved, at + 2000);
     expect(Math.hypot(end.x, end.z)).toBeGreaterThan(1.25);
-    expect(end.y).toBeCloseTo(0.69);
+    expect(end.y).toBeCloseTo(0.7);
     expect(itemPosition(stone, { ...saved }, at + 2000)).toEqual(end);
   });
   it("rejects a corrupt escort clock and keeps overlapping leases apart", () => {

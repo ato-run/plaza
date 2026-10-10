@@ -126,7 +126,17 @@ export function validateDurable(
         !pose
       )
         return "plaza_presence_required";
-      if (Math.hypot(pose.x - action.x, pose.z - action.z) > 4.5)
+      const current = v.pose === undefined ? pose : sanitizeTransform(v.pose);
+      if (
+        !current ||
+        Math.hypot(current.x - pose.x, current.z - pose.z) >
+          Math.min(
+            2,
+            0.35 + (Math.max(0, context.now - own.observed_at) / 1000) * 5.5,
+          )
+      )
+        return "plaza_out_of_reach";
+      if (Math.hypot(current.x - action.x, current.z - action.z) > 4.5)
         return "plaza_out_of_reach";
     }
     return null;

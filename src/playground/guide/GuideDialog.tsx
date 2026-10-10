@@ -1,3 +1,4 @@
+import { escortChoices, ESCORT_LABELS } from "./escortChoices";
 /**
  * Talking with someone in Plaza — Nagi or one of the residents: their line,
  * the choices that follow from it, and a field for saying something in your
@@ -41,6 +42,7 @@ interface GuideDialogProps {
   onDeliver?(): void;
   onEscort?(goal: "pools" | "camp" | "pier" | "lookout"): void;
   memories?: string[];
+  currentPlace?: string;
 }
 
 export function GuideDialog({
@@ -59,10 +61,12 @@ export function GuideDialog({
   onDiscussApp,
   waitingForClaim = false,
   memories = [],
+  currentPlace = "",
 }: GuideDialogProps) {
   const [current, setCurrent] = useState<GuideReply>(start);
   const [asked, setAsked] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [expanded, setExpanded] = useState(false);
   const [thinking, setThinking] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   // One server conversation per opening of the dialog; ended when it closes.
@@ -90,6 +94,7 @@ export function GuideDialog({
     }
     endConversation();
     conversationRef.current = { id: newId("conv"), npcId: npc.id, used: false };
+    setExpanded(false);
     setCurrent(start);
     setAsked(null);
     setDraft("");
@@ -221,7 +226,7 @@ export function GuideDialog({
   return (
     <div
       ref={panelRef}
-      className="pg-guide"
+      className={`pg-guide${expanded ? "" : " pg-guide--compact"}`}
       role="dialog"
       aria-label={`Talk with ${npc.name}`}
       tabIndex={-1}
@@ -247,15 +252,14 @@ export function GuideDialog({
           ✕
         </button>
       </header>
-      {memories.some((entry) => entry.startsWith(`${npc.id}:`)) ? (
+      {memories.some((entry) => entry.startsWith(`${npc.name} `)) ? (
         <p className="pg-guide-memory">
           We met earlier:{" "}
-          {memories
-            .filter((entry) => entry.startsWith(`${npc.id}:`))
-            .slice(-1)[0]
-            ?.split(": ")
-            .slice(1)
-            .join(": ")}
+          {
+            memories
+              .filter((entry) => entry.startsWith(`${npc.name} `))
+              .slice(-1)[0]
+          }
         </p>
       ) : null}
       {waitingForClaim ? <p role="status">Waiting for this neighbor…</p> : null}
@@ -277,15 +281,17 @@ export function GuideDialog({
         </div>
       ) : null}
       <div className="pg-guide-choices" hidden={thinking}>
-        {current.choices.map((choice) => (
-          <button
-            key={choice.label}
-            type="button"
-            onClick={() => choose(choice.action, choice.label)}
-          >
-            {choice.label}
-          </button>
-        ))}
+        {(expanded ? current.choices : current.choices.slice(0, 2)).map(
+          (choice) => (
+            <button
+              key={choice.label}
+              type="button"
+              onClick={() => choose(choice.action, choice.label)}
+            >
+              {choice.label}
+            </button>
+          ),
+        )}
       </div>
       {npc.id === "owl" && heldItem === "keepsake" && onDeliver ? (
         <button className="pg-guide-choice" onClick={onDeliver}>
@@ -310,28 +316,25 @@ export function GuideDialog({
         <details className="pg-escort">
           <summary>Explore together</summary>
           <div className="pg-guide-choices">
-            <button
-              disabled={waitingForClaim}
-              onClick={() => onEscort("pools")}
-            >
-              Find shells at the tide pools
-            </button>
-            <button disabled={waitingForClaim} onClick={() => onEscort("pier")}>
-              Float driftwood at the pier
-            </button>
-            <button disabled={waitingForClaim} onClick={() => onEscort("camp")}>
-              Watch the sky at camp
-            </button>
-            <button
-              disabled={waitingForClaim}
-              onClick={() => onEscort("lookout")}
-            >
-              Climb the dune lookout
-            </button>
+            {escortChoices(npc.id, currentPlace).map((goal) => (
+              <button
+                key={goal}
+                disabled={waitingForClaim}
+                onClick={() => onEscort(goal)}
+              >
+                {ESCORT_LABELS[goal]}
+              </button>
+            ))}
           </div>
         </details>
       ) : null}
-      <form className="pg-guide-ask" onSubmit={ask}>
+      <button
+        className="pg-guide-choice"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        {expanded ? "Keep it brief" : "Continue conversation"}
+      </button>
+      <form hidden={!expanded} className="pg-guide-ask" onSubmit={ask}>
         <input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}

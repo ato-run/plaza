@@ -14,6 +14,58 @@ import {
 import { WALK_SPEED } from "../world/worldMath";
 
 describe("shared Plaza action adapter", () => {
+  it("accepts a bounded current interaction pose but rejects stale, foreign and forged positions", () => {
+    const pose = { ...SPAWN, x: 0, z: 10 },
+      action = { kind: "take", id: "stone-0", x: 4.6, z: 10 };
+    const context = {
+      actor: false,
+      principalId: "a",
+      now: 1000,
+      peers: [
+        {
+          principal_id: "a",
+          display_name: "A",
+          scope: WORLD,
+          pose,
+          observed_at: 800,
+          consent: true,
+        },
+      ],
+    };
+    expect(
+      validateDurable(
+        { t: "openair", action, pose: { ...pose, x: 1 } },
+        context,
+      ),
+    ).toBeNull();
+    expect(validateDurable({ t: "openair", action }, context)).toBe(
+      "plaza_out_of_reach",
+    );
+    expect(
+      validateDurable(
+        { t: "openair", action, pose: { ...pose, x: 8 } },
+        context,
+      ),
+    ).toBe("plaza_out_of_reach");
+    expect(
+      validateDurable(
+        { t: "openair", action, pose },
+        { ...context, now: 7000 },
+      ),
+    ).toBe("plaza_presence_required");
+    expect(
+      validateDurable(
+        { t: "openair", action, pose },
+        { ...context, peers: [{ ...context.peers[0], scope: "market" }] },
+      ),
+    ).toBe("plaza_presence_required");
+    expect(
+      validateDurable(
+        { t: "openair", action, pose },
+        { ...context, actor: true },
+      ),
+    ).toBe("plaza_operation_denied");
+  });
   it("offers only current consented targets and bounded safe alternatives", () => {
     const obs = {
       instruction: "ついてきて",

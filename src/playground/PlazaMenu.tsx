@@ -1,5 +1,11 @@
+import { interactionMeasurements } from "./world/openAir/metrics";
 import { OPEN_AIR_PLACES } from "./world/openAir/layout";
-import type { ExploreSettings } from "./world/openAir/settings";
+import {
+  DEFAULT_KEYS,
+  rebindKey,
+  type InputAction,
+  type ExploreSettings,
+} from "./world/openAir/settings";
 /**
  * The one place that explains and changes how you are in the Plaza: who you
  * appear as, the light you see, which World you are in, and the controls.
@@ -66,10 +72,12 @@ const CONTROLS: readonly (readonly [string, string])[] = [
   ["W A S D", "Move"],
   ["Space", "Jump / climb low ledges"],
   ["C / Ctrl", "Crouch"],
+  ["Shift", "Run"],
   ["E", "Pick up objects, watch wildlife, use seats or exhibits"],
   ["Enter", "Talk to people, residents or Nagi"],
   ["1 – 4", "React to whoever you are facing"],
   ["Q / F", "Place / throw the object you are holding"],
+  ["R / G", "Rotate the held object / draw in sand"],
   ["M", "Open this menu"],
 ];
 
@@ -78,6 +86,7 @@ export function PlazaMenu(props: PlazaMenuProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const [name, setName] = useState("");
   const [animal, setAnimal] = useState<string>(ROOM_ANIMALS[0]);
+  const [keyError, setKeyError] = useState("");
 
   // Start each opening from what the room currently calls you.
   useEffect(() => {
@@ -105,6 +114,24 @@ export function PlazaMenu(props: PlazaMenuProps) {
     (trimmed !== identity.displayName || animal !== identity.animalEmoji);
   const valid = nameLength >= 1 && nameLength <= MAX_NAME_CHARS;
   const lookKeys = props.lookMode === "drag" ? "Drag" : "Mouse";
+  const shortcuts: Record<string, InputAction[]> = {
+    "W A S D": ["forward", "left", "back", "right"],
+    Space: ["jump"],
+    "C / Ctrl": ["crouch"],
+    Shift: ["run"],
+    E: ["interact"],
+    "Q / F": ["place", "throw"],
+    "R / G": ["rotate", "mark"],
+  };
+  const keyLabel = (label: string) =>
+    shortcuts[label]
+      ?.map((action) =>
+        (props.settings?.keys ?? DEFAULT_KEYS)[action]
+          .replace("Key", "")
+          .replace("ShiftLeft", "Shift")
+          .replace("ShiftRight", "Right Shift"),
+      )
+      .join(" / ") ?? label;
 
   return (
     <>
@@ -236,7 +263,7 @@ export function PlazaMenu(props: PlazaMenuProps) {
           <div className="pg-guide-choices">
             {OPEN_AIR_PLACES.map((place) => (
               <button key={place.id} onClick={() => props.onPlace?.(place.id)}>
-                {place.name}
+                Show route to {place.name}
               </button>
             ))}
           </div>
@@ -284,6 +311,33 @@ export function PlazaMenu(props: PlazaMenuProps) {
         </section>
 
         <section data-section="controls">
+          {import.meta.env.DEV ? (
+            <details>
+              <summary>Input measurements</summary>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Action</th>
+                    <th>Samples</th>
+                    <th>Median ms</th>
+                    <th>P95 ms</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(interactionMeasurements()).map(
+                    ([kind, value]) => (
+                      <tr key={kind}>
+                        <td>{kind}</td>
+                        <td>{value.count}</td>
+                        <td>{value.medianMs.toFixed(1)}</td>
+                        <td>{value.p95Ms.toFixed(1)}</td>
+                      </tr>
+                    ),
+                  )}
+                </tbody>
+              </table>
+            </details>
+          ) : null}
           <h3>Controls</h3>
           {props.settings && props.onSettings ? (
             <div className="pg-view-settings">
@@ -330,6 +384,68 @@ export function PlazaMenu(props: PlazaMenuProps) {
                 Walking camera motion
               </label>
               <label>
+                Field of view{" "}
+                <input
+                  type="range"
+                  min="50"
+                  max="95"
+                  step="1"
+                  value={props.settings.fov}
+                  onChange={(event) =>
+                    props.onSettings?.({
+                      ...props.settings!,
+                      fov: Number(event.target.value),
+                    })
+                  }
+                />
+              </label>
+              <details>
+                <summary>Keyboard controls</summary>
+                <p>
+                  Arrow keys look around. Select a control and press its new
+                  key.
+                </p>
+                {(Object.keys(DEFAULT_KEYS) as InputAction[]).map((action) => (
+                  <label key={action}>
+                    {action.replace(/([A-Z])/g, " $1")}
+                    <button
+                      onKeyDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (event.code === "Escape" || event.code === "Enter")
+                          return;
+                        const keys = rebindKey(
+                          props.settings!.keys,
+                          action,
+                          event.code,
+                        );
+                        if (!keys) {
+                          setKeyError(
+                            "Choose an unused letter, arrow, Space or Shift. M, Enter and 1–4 are reserved.",
+                          );
+                          return;
+                        }
+                        setKeyError("");
+                        props.onSettings?.({ ...props.settings!, keys });
+                      }}
+                    >
+                      {props.settings!.keys[action].replace("Key", "")}
+                    </button>
+                  </label>
+                ))}
+                <button
+                  onClick={() =>
+                    props.onSettings?.({
+                      ...props.settings!,
+                      keys: { ...DEFAULT_KEYS },
+                    })
+                  }
+                >
+                  Reset keys
+                </button>
+                {keyError ? <p role="status">{keyError}</p> : null}
+              </details>
+              <label>
                 Sound volume{" "}
                 <input
                   type="range"
@@ -351,7 +467,7 @@ export function PlazaMenu(props: PlazaMenuProps) {
             {CONTROLS.map(([keys, action]) => (
               <div key={keys}>
                 <dt>
-                  <kbd>{keys}</kbd>
+                  <kbd>{keyLabel(keys)}</kbd>
                 </dt>
                 <dd>{action}</dd>
               </div>

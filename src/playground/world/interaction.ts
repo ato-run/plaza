@@ -8,7 +8,7 @@
  * place that knows a mascot and a person are targeted the same way but acted
  * on differently.
  */
-import type * as THREE from "three";
+import * as THREE from "three";
 
 import { chooseTarget, type TargetCandidate } from "./worldMath";
 import type { Interactable } from "./types";
@@ -55,6 +55,36 @@ export function targetKey(target: WorldTarget | null): string {
   }
 }
 
+/** Furniture can contain its own affordance without hiding unrelated targets. */
+export function occludesTarget(
+  object: THREE.Object3D,
+  target: WorldTarget,
+  selection?: THREE.Object3D,
+): boolean {
+  const mesh = object as THREE.Mesh;
+  if (!mesh.isMesh || mesh === selection || mesh.userData.nonOccluding)
+    return false;
+  const key = targetKey(target);
+  for (
+    let parent: THREE.Object3D | null = mesh;
+    parent;
+    parent = parent.parent
+  ) {
+    if (!parent.visible) return false;
+    const ownTargets = parent.userData.interactionTargets;
+    if (Array.isArray(ownTargets) && ownTargets.includes(key)) return false;
+  }
+  const materials = Array.isArray(mesh.material)
+    ? mesh.material
+    : [mesh.material];
+  return materials.some(
+    (material) =>
+      material.opacity > 0.85 &&
+      material.depthWrite &&
+      material.side !== THREE.BackSide,
+  );
+}
+
 /**
  * Turn a World's interactables into targeting candidates.
  *
@@ -74,7 +104,7 @@ export function interactableCandidate(
     return {
       item: { kind: cardKind, ref, title: interactable.title },
       position: interactable.anchor,
-      maxDistance: interactable.maxDistance,
+      maxDistance: Math.min(interactable.maxDistance ?? 3.4, 3.4),
     };
   }
   if (interactable.kind === "object") {
@@ -86,6 +116,7 @@ export function interactableCandidate(
       },
       position: interactable.anchor,
       maxDistance: interactable.maxDistance ?? 3.2,
+      minDot: 0.9,
     };
   }
   if (interactable.kind === "guide") {
@@ -96,7 +127,7 @@ export function interactableCandidate(
         name: interactable.title,
       },
       position: interactable.anchor,
-      maxDistance: interactable.maxDistance,
+      maxDistance: Math.min(interactable.maxDistance ?? 3.4, 3.4),
     };
   }
   if (interactable.kind === "mascot") {
@@ -107,13 +138,13 @@ export function interactableCandidate(
         name: interactable.title,
       },
       position: interactable.anchor,
-      maxDistance: interactable.maxDistance,
+      maxDistance: Math.min(interactable.maxDistance ?? 3.4, 3.4),
     };
   }
   return {
     item: { kind: "seat", seatId: interactable.id, title: interactable.title },
     position: interactable.anchor,
-    maxDistance: interactable.maxDistance,
+    maxDistance: Math.min(interactable.maxDistance ?? 3.4, 3.4),
   };
 }
 
@@ -129,6 +160,11 @@ export function resolveTarget(
   forward: THREE.Vector3,
   people: readonly PersonCandidate[],
   interactables: readonly Interactable[],
+  visible: (
+    position: TargetCandidate<WorldTarget>["position"],
+    target: WorldTarget,
+  ) => boolean = () => true,
+  preferred?: WorldTarget | null,
 ): WorldTarget | null {
   const candidates: TargetCandidate<WorldTarget>[] = [];
   for (const person of people) {
@@ -145,5 +181,19 @@ export function resolveTarget(
     const candidate = interactableCandidate(interactable);
     if (candidate) candidates.push(candidate);
   }
-  return chooseTarget(eye, forward, candidates);
+  const eligible = candidates.filter(
+    (candidate) =>
+      Math.hypot(
+        candidate.position.x - eye.x,
+        candidate.position.y - eye.y,
+        candidate.position.z - eye.z,
+      ) <= (candidate.maxDistance ?? 3.4) &&
+      visible(candidate.position, candidate.item),
+  );
+  const previous = eligible.find(
+    (candidate) => targetKey(candidate.item) === targetKey(preferred ?? null),
+  );
+  if (previous && chooseTarget(eye, forward, [previous], 0.91))
+    return previous.item;
+  return chooseTarget(eye, forward, eligible);
 }

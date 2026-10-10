@@ -1,7 +1,7 @@
 import { Vector3 } from "three";
 import { lifeSchedule } from "../openAir/life";
 import { createOpenAir } from "../openAir/scene";
-import { landmarkGround, CAMP_BENCHES } from "../openAir/layout";
+import { landmarkGround, CAMP_BENCHES, CAMP_SEATS } from "../openAir/layout";
 import { worldMoment } from "../openAir/clock";
 import { overlaps } from "../collision";
 /**
@@ -126,13 +126,13 @@ export const centralPlaza: WorldDefinition = {
           ...DAY_SKY,
           sunDirection: [-0.3, 0.2, -0.7],
           sunColor: "#b4c9f2",
-          sunIntensity: 0.18,
+          sunIntensity: 0.8,
           zenith: "#071524",
           horizon: "#233344",
-          ground: "#27352e",
+          ground: "#89918a",
           clouds: 0.15,
-          exposure: 0.8,
-          environmentIntensity: 0.3,
+          exposure: 1.35,
+          environmentIntensity: 0.95,
         },
       },
       {
@@ -207,6 +207,7 @@ export const centralPlaza: WorldDefinition = {
     // with scanned surfaces, on the same footprints and colliders as before.
     const props = buildPlazaProps(builder, {
       benches: [...CENTRAL_BENCHES, ...CAMP_BENCHES],
+      seats: CAMP_SEATS,
       planters: CENTRAL_PLANTERS,
       lanterns: CENTRAL_LANTERNS,
       assets,
@@ -321,11 +322,13 @@ export const centralPlaza: WorldDefinition = {
       deferred: [
         () => terrain.load(assets),
         ...props.deferred,
-        () => placeRocks(scenery, assets, signal, (resource) =>
-          builder.trackResource(resource),
-        ).catch((error: unknown) => {
-          if (!(error instanceof LoadAborted)) console.warn("[plaza] rocks unavailable");
-        }),
+        () =>
+          placeRocks(scenery, assets, signal, (resource) =>
+            builder.trackResource(resource),
+          ).catch((error: unknown) => {
+            if (!(error instanceof LoadAborted))
+              console.warn("[plaza] rocks unavailable");
+          }),
       ],
       colliders,
       interactables,
@@ -356,6 +359,9 @@ export const centralPlaza: WorldDefinition = {
         const tide = worldMoment(openAir.now()).tide;
         if (
           beachWalkable(x, z, tide) ||
+          (Math.abs(x) < 54 &&
+            Math.abs(z) < 54 &&
+            openAir.supportHeight(x, z) > -0.8 + tide - 0.15) ||
           (x > 20 && x < 24 && z > -46 && z < -23)
         )
           return true;
@@ -375,6 +381,7 @@ export const centralPlaza: WorldDefinition = {
           Math.hypot(x, z) < fountain.r + BODY_RADIUS
             ? FOUNTAIN_TOP
             : landmarkGround(x, z, terrainHeight(x, z)),
+          openAir.supportHeight(x, z),
           ...colliders
             .filter((c) => c.top !== undefined && overlaps(c, x, z, 0.1))
             .map((c) => c.top!),
@@ -393,8 +400,12 @@ export const centralPlaza: WorldDefinition = {
         // Shared time keeps the tide and wind consistent across visitors.
         coast.uTime.value = (openAir.now() % 1800000) / 1000;
         coast.uTide.value = worldMoment(openAir.now()).tide;
+        coast.uRain.value =
+          worldMoment(openAir.now()).weather === "rain" ? 1 : 0;
         openAir.update(_dt);
         vegetation.wind.uTime.value = (openAir.now() % 1800000) / 1000;
+        const wind = worldMoment(openAir.now());
+        vegetation.wind.uWindDirection.value.set(wind.windX, wind.windZ);
         vegetation.wind.uWindStrength.value = reducedMotion
           ? 0
           : worldMoment(openAir.now()).wind;

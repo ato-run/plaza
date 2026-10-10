@@ -11,8 +11,8 @@ export const CENTRAL_TREES = [
   [6, -18, 1.5],
   [-18, -10, 1.8],
   [18, -13, 1.7],
-  [-17, 13, 1.4],
-  [17, 16, 1.3],
+  [-18, 19, 1.4],
+  [26, 19, 1.3],
   [-3, 21, 1.4],
 ] as const;
 export const CENTRAL_PLANTERS = [

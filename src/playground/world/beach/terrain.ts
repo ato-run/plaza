@@ -61,7 +61,10 @@ function terrainGeometry(segments: number): THREE.BufferGeometry {
     }
   }
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(positions, 3),
+  );
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1400);
@@ -123,7 +126,7 @@ sand = mix(sand, sand * normalize(near + 0.05) * 1.732, 0.18);
 beachArm = texture2D(uSandArm, beachXZ / 2.3);
 
 float aboveSea = vBeachWorld.y - SEA_LEVEL;
-beachWet = sandWetness(aboveSea, beachXZ.x) * (1.0 - smoothstep(0.5, 1.2, aboveSea));
+beachWet = max(sandWetness(aboveSea, beachXZ.x) * (1.0 - smoothstep(0.5, 1.2, aboveSea)), uRain * .42);
 // Wet sand darkens and saturates: water fills the gaps between grains.
 sand = mix(sand, sand * sand * 0.82, beachWet);
 diffuseColor.rgb *= sand * mix(1.0, beachArm.r, 0.45);
@@ -175,7 +178,10 @@ export interface Terrain {
 
 export function createTerrain(
   coast: CoastUniforms,
-  sky: { uSunDirection: { value: THREE.Vector3 }; uSunColor: { value: THREE.Color } },
+  sky: {
+    uSunDirection: { value: THREE.Vector3 };
+    uSunColor: { value: THREE.Color };
+  },
   quality: QualityProfile,
 ): Terrain {
   const placeholders = {
@@ -193,7 +199,11 @@ export function createTerrain(
     uAbsorption: { value: ABSORPTION },
     uWaterScatter: { value: WATER_SCATTER },
   };
-  const material = new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 1, metalness: 0 });
+  const material = new THREE.MeshStandardMaterial({
+    color: "#ffffff",
+    roughness: 1,
+    metalness: 0,
+  });
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, coast, uniforms, {
       uSunDirection: sky.uSunDirection,
@@ -207,11 +217,17 @@ export function createTerrain(
       .replace("#include <map_fragment>", FRAGMENT_COLOR)
       .replace("#include <roughnessmap_fragment>", FRAGMENT_ROUGHNESS)
       .replace("#include <normal_fragment_maps>", FRAGMENT_NORMAL)
-      .replace("#include <opaque_fragment>", `#include <opaque_fragment>\n${FRAGMENT_UNDERWATER}`)
+      .replace(
+        "#include <opaque_fragment>",
+        `#include <opaque_fragment>\n${FRAGMENT_UNDERWATER}`,
+      )
       // Under water the sea surface carries the haze (it is drawn over this
       // with its own, clearer sea air); land haze here would show through it
       // as a pale band.
-      .replace("#include <fog_fragment>", "if (!beachUnderwater) {\n#include <fog_fragment>\n}");
+      .replace(
+        "#include <fog_fragment>",
+        "if (!beachUnderwater) {\n#include <fog_fragment>\n}",
+      );
   };
   material.customProgramCacheKey = () => "plaza-beach-terrain";
 
@@ -226,7 +242,10 @@ export function createTerrain(
   const loaded: THREE.Texture[] = [];
   return {
     mesh,
-    resources: [...Object.values(placeholders), { dispose: () => loaded.forEach((t) => t.dispose()) }],
+    resources: [
+      ...Object.values(placeholders),
+      { dispose: () => loaded.forEach((t) => t.dispose()) },
+    ],
     async load(assets) {
       const wanted: [keyof typeof uniforms, string, THREE.ColorSpace][] = [
         ["uSandColor", "sand_03_diff_1k.jpg", THREE.SRGBColorSpace],

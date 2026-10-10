@@ -1,3 +1,5 @@
+import { driftwoodWork } from "../openAir/work";
+import { shellArrangement } from "../openAir/model";
 import type { OpenAirRuntime } from "../openAir/scene";
 import {
   activeLease,
@@ -315,12 +317,17 @@ export function createResidents(
     vertexColors: true,
     roughness: 0.85,
   });
-  const seenObjectActions = new Map<string, number>();
+  const seenObjectActions = new Map<
+    string,
+    { at: number; owner: string | null }
+  >();
+  const reactionSpeech = new Map<string, number>();
   const escortRoutes = new Map<string, { x: number; z: number }[]>();
   const live: Live[] = cast.map((spec) => {
     const look = LOOKS[spec.species];
     const group = builder.group();
     group.name = `resident:${spec.id}`;
+    group.userData.interactionTargets = [`mascot:${spec.id}`];
     const body = new THREE.Mesh(
       merged(bodyGeometry(look, spec.shirt)),
       material,
@@ -531,6 +538,56 @@ export function createResidents(
           state.z = resident.last.z;
           state.moving = false;
         }
+        if (!lease && !resident.held && openAir) {
+          if (resident.spec.id === "panda" && !shared?.objects["wood-0"]) {
+            const work = driftwoodWork(nowMs);
+            if (work.active) {
+              state.x = work.x;
+              state.z = work.z;
+              state.yaw = work.yaw;
+              state.moving = work.carrying || (work.z > -30 && work.z < 16);
+            }
+          }
+          if (resident.spec.id === "dog") {
+            const ball = ITEMS.filter((i) => i.kind === "ball")
+              .map((item) => ({ item, saved: shared?.objects[item.id] }))
+              .filter(
+                (v) =>
+                  v.saved &&
+                  !v.saved.owner &&
+                  Math.hypot(v.saved.vx, v.saved.vz) > 0.15 &&
+                  nowMs - v.saved.at < 8000,
+              )
+              .sort((a, b) => b.saved!.at - a.saved!.at)[0];
+            if (ball?.saved && grid) {
+              const p = itemPosition(ball.item, ball.saved, nowMs, shared),
+                start = schedule.stateAt(index, ball.saved.at / 1000),
+                key = `chase:${ball.saved.at}:${ball.item.id}`;
+              let route = escortRoutes.get(key);
+              if (!route) {
+                route = [start, ...findPath(grid, start, p), p];
+                escortRoutes.set(key, route);
+              }
+              let distance = Math.max(0, (nowMs - ball.saved.at) / 1000) * 2.5;
+              for (let j = 1; j < route.length; j++) {
+                const a = route[j - 1],
+                  b = route[j],
+                  length = Math.hypot(b.x - a.x, b.z - a.z);
+                if (distance < length) {
+                  state.x = a.x + ((b.x - a.x) * distance) / length;
+                  state.z = a.z + ((b.z - a.z) * distance) / length;
+                  state.yaw = Math.atan2(-(b.x - a.x), -(b.z - a.z));
+                  state.moving = true;
+                  break;
+                }
+                distance -= length;
+                state.x = b.x;
+                state.z = b.z;
+                state.moving = false;
+              }
+            }
+          }
+        }
         resident.leaseActive = !!lease;
         return state;
       });
@@ -538,10 +595,12 @@ export function createResidents(
       if (openAir) {
         for (const item of ITEMS) {
           const saved = openAir.state().objects[item.id];
-          if (!saved || seenObjectActions.get(item.id) === saved.at) continue;
-          seenObjectActions.set(item.id, saved.at);
+          const previous = seenObjectActions.get(item.id);
+          if (!saved || previous?.at === saved.at) continue;
+          seenObjectActions.set(item.id, { at: saved.at, owner: saved.owner });
+          if (saved.owner && previous?.owner === saved.owner) continue;
           if (nowMs - saved.at > 4000) continue;
-          const p = itemPosition(item, saved, nowMs);
+          const p = itemPosition(item, saved, nowMs, openAir.state());
           const nearest = live
             .map((r, i) => ({
               r,
@@ -554,18 +613,29 @@ export function createResidents(
             )
             .sort((a, b) => a.d - b.d)[0]?.r;
           if (nearest) {
-            nearest.saying = {
-              text: saved.owner
-                ? `You found a ${item.kind}. Try placing or throwing it.`
-                : terrainHeight(p.x, p.z) < -0.8
-                  ? item.kind === "wood" ||
-                    item.kind === "leaf" ||
-                    item.kind === "ball"
-                    ? "Look — it floats!"
-                    : "Nice splash!"
-                  : "That makes a lovely arrangement.",
-              until: nowMs + 3500,
+            nearest.reactionPause = {
+              x: nearest.last.x,
+              z: nearest.last.z,
+              until: nowMs + 1200,
             };
+            if (
+              nowMs - (reactionSpeech.get(nearest.spec.id) ?? -Infinity) >
+              8000
+            ) {
+              reactionSpeech.set(nearest.spec.id, nowMs);
+              nearest.saying = {
+                text: saved.owner
+                  ? `You found a ${item.kind}. Try placing or throwing it.`
+                  : terrainHeight(p.x, p.z) < -0.8
+                    ? item.kind === "wood" ||
+                      item.kind === "leaf" ||
+                      item.kind === "ball"
+                      ? "Look — it floats!"
+                      : "Nice splash!"
+                    : "That makes a lovely arrangement.",
+                until: nowMs + 3500,
+              };
+            }
             nearest.facePlayerUntil = nowMs + 3500;
           }
         }
@@ -609,6 +679,7 @@ export function createResidents(
           .slice(0, 3)
           .map(([, index]) => index),
       );
+      const spokenLines = new Set<string>();
       live.forEach((resident, index) => {
         const state = states[index];
         const toPlayer = eye
@@ -676,7 +747,8 @@ export function createResidents(
             line = muse[Math.floor(hash01(index, window) * muse.length)];
           }
         }
-        if (line) {
+        if (line && !spokenLines.has(line) && nearby) {
+          spokenLines.add(line);
           if (resident.bubble.textContent !== line)
             resident.bubble.textContent = line;
           resident.bubble.style.display = "block";
@@ -705,6 +777,28 @@ export function createResidents(
           );
         } else if (!lease && eye && toPlayer < 4) {
           lookAt = Math.atan2(-(eye.x - state.x), -(eye.z - state.z));
+        }
+        if (
+          resident.spec.id === "owl" &&
+          !lease &&
+          !state.moving &&
+          state.spot.id === "job-shells" &&
+          openAir &&
+          !Object.values(openAir.state().observations).some((observations) =>
+            observations.includes("keepsake"),
+          )
+        ) {
+          const shell = ITEMS.find((item) => item.id === "keepsake")!;
+          const p = itemPosition(
+            shell,
+            openAir.state().objects[shell.id],
+            nowMs,
+            openAir.state(),
+          );
+          if (!p.held) {
+            lookAt = Math.atan2(-(p.x - state.x), -(p.z - state.z));
+            bodyYaw = lookAt;
+          }
         }
         if (!resident.placed) {
           resident.yaw = bodyYaw;
@@ -748,7 +842,29 @@ export function createResidents(
           else resident.head.rotation.x = 0;
         }
         const phase = worldMoment(nowMs);
-        const activity = state.spot.id;
+        const escortGoal =
+          lease?.goal && OPEN_AIR_PLACES.find((p) => p.id === lease.goal);
+        const arrived =
+          escortGoal &&
+          Math.hypot(state.x - escortGoal.x, state.z - escortGoal.z) <
+            escortGoal.radius;
+        const activity = arrived
+          ? escortGoal.id === "pools"
+            ? resident.spec.id === "owl"
+              ? "job-shells"
+              : "job-crabs"
+            : escortGoal.id === "pier"
+              ? "job-driftwood"
+              : escortGoal.id === "lookout"
+                ? "job-exercise"
+                : "job-rest"
+          : state.spot.id;
+        if (lease && !state.moving && !reducedMotion)
+          resident.head.rotation.x = arrived
+            ? escortGoal?.id === "camp"
+              ? -0.35
+              : 0.2
+            : Math.sin(t * 2) * 0.06;
         resident.tool.visible =
           activity.startsWith("job-") &&
           !state.moving &&
@@ -775,7 +891,7 @@ export function createResidents(
             "job-repair": "This roof keeps the rain off.",
             "job-flowers": "The leaves move with the sea breeze.",
             "job-crabs": "Crouch to watch the crabs without startling them.",
-            "job-shells": "Try making a shell arrangement on the stone tray.",
+            "job-shells": `I can see a ${(openAir ? shellArrangement(openAir.state(), nowMs) : "shell arrangement").replace("shell ", "")} of shells. Try another shape.`,
           };
           resident.activitySeen = nowMs;
           resident.saying = {
@@ -786,7 +902,7 @@ export function createResidents(
         if (
           !state.moving &&
           activity.startsWith("job-") &&
-          !lease &&
+          (!lease || arrived) &&
           !reducedMotion
         ) {
           switch (activity) {
@@ -826,6 +942,7 @@ export function createResidents(
               y -= 0.14;
               break;
             case "job-shells":
+              resident.head.rotation.y += Math.sin(t * 0.7) * 0.35;
               resident.head.rotation.x = 0.22;
               resident.tool.rotation.x = Math.sin(t * 1.5) * 0.18;
               break;

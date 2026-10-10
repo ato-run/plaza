@@ -70,7 +70,19 @@ export type PlazaOp =
         created_at: string;
       };
     }
-  | { t: "openair"; action: OpenAirAction }
+  | {
+      t: "openair";
+      action: OpenAirAction;
+      pose?: {
+        x: number;
+        y: number;
+        z: number;
+        yaw: number;
+        pitch: number;
+        movement: "idle" | "walk" | "jump";
+        pose: "stand" | "sit" | "crouch";
+      };
+    }
   | { t: "post.deleted"; post_id: string }
   | { t: "reaction"; post_id: string; reaction: string }
   | { t: "unreaction"; post_id: string; reaction: string };

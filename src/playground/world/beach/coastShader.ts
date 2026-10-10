@@ -28,6 +28,7 @@ export interface CoastUniforms {
   /** World clock in seconds; the only clock the water and sand read. */
   uTime: { value: number };
   uTide: { value: number };
+  uRain: { value: number };
 }
 
 export function createCoastUniforms(size: number): CoastUniforms {
@@ -54,6 +55,7 @@ export function createCoastUniforms(size: number): CoastUniforms {
     uCoastExtent: { value: field.extent },
     uTime: { value: 0 },
     uTide: { value: 0 },
+    uRain: { value: 0 },
   };
 }
 
@@ -63,6 +65,7 @@ uniform float uCoastExtent;
 uniform float uTime;
 
 uniform float uTide;
+uniform float uRain;
 #define SEA_LEVEL (${SEA_LEVEL.toFixed(3)} + uTide)
 #define SWASH_PERIOD ${SWASH_PERIOD.toFixed(1)}
 #define SWASH_RISE 0.3
