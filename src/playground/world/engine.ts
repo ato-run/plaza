@@ -335,13 +335,16 @@ export function createEngine(options: EngineOptions): Engine {
 
   on(window, "keydown", (event) => {
     const keyboard = event as KeyboardEvent;
-    const tag = (keyboard.target as HTMLElement | null)?.tagName;
+    const target = keyboard.target as HTMLElement | null;
+    const tag = target?.tagName;
     if (
       paused ||
       tag === "INPUT" ||
       tag === "TEXTAREA" ||
-      tag === "BUTTON" ||
-      tag === "SELECT"
+      tag === "SELECT" ||
+      target?.isContentEditable ||
+      (target?.closest("button") &&
+        (keyboard.code === "Space" || keyboard.key === "Enter"))
     )
       return;
     if (keyboard.key === "Escape" && dragLook) {
