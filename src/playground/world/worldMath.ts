@@ -189,6 +189,7 @@ export interface TargetCandidate<T> {
   /** The point that must be centred — a head, not a pair of feet. */
   position: { x: number; y: number; z: number };
   maxDistance?: number;
+  minDot?: number;
 }
 
 /**
@@ -217,7 +218,8 @@ export function chooseTarget<T>(
       (dx / distance) * forward.x +
       (dy / distance) * forward.y +
       (dz / distance) * forward.z;
-    if (dot > best) {
+    if (dot < (candidate.minDot ?? minDot)) continue;
+    if (dot > best || chosen === null) {
       best = dot;
       chosen = candidate.item;
     }

@@ -13,19 +13,21 @@ import { createSkyDome, createSkyUniforms } from "./skyShader";
 
 export interface EnvironmentController {
   /** Set up a World's environment, in the given time of day if it has one. */
-  apply(environment: WorldEnvironment, timeOfDay?: string | null): WorldLighting;
+  apply(
+    environment: WorldEnvironment,
+    timeOfDay?: string | null,
+  ): WorldLighting;
   /**
    * Change the light of the mounted World in place: same uniforms, same
    * lighting handle, one re-bake. Materials that captured the sky follow.
    */
-  retune(sky: WorldSky): void;
+  retune(sky: WorldSky, rebake?: boolean): void;
   /** Release the current World's sky, environment map and fog. */
   clear(): void;
   /** Re-render GPU-only results after a lost context comes back. */
   restore(): void;
   dispose(): void;
 }
-
 
 /** Fixed rig used by Worlds without a sky (the pre-beach look). */
 const LEGACY = {
@@ -43,18 +45,25 @@ export function createEnvironment(
   sun: THREE.DirectionalLight,
   hemisphere: THREE.HemisphereLight,
 ): EnvironmentController {
-  let dome: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial> | null = null;
+  let dome: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial> | null =
+    null;
   let target: THREE.WebGLRenderTarget | null = null;
   let current: WorldSky | null = null;
   const uniforms = createSkyUniforms();
   const environmentMap: { value: THREE.Texture | null } = { value: null };
+  const direction = new THREE.Vector3();
+  const haze = new THREE.Color();
+  const fillColor = new THREE.Color();
 
   function bake(sky: WorldSky): void {
     target?.dispose();
     const envScene = new THREE.Scene();
     // Light from the sky without the disc (the directional light is the
     // sun); clouds kept faint so they soften rather than blotch reflections.
-    const envDome = createSkyDome(uniforms, { sunDisc: 0, clouds: sky.clouds * 0.5 });
+    const envDome = createSkyDome(uniforms, {
+      sunDisc: 0,
+      clouds: sky.clouds * 0.5,
+    });
     envScene.add(envDome);
     const generator = new THREE.PMREMGenerator(renderer);
     target = generator.fromScene(envScene, 0, 0.1, 1000);
@@ -65,8 +74,8 @@ export function createEnvironment(
     environmentMap.value = target.texture;
   }
 
-  function tune(sky: WorldSky): void {
-    const direction = new THREE.Vector3(...sky.sunDirection).normalize();
+  function tune(sky: WorldSky, rebake = true): void {
+    direction.set(...sky.sunDirection).normalize();
     uniforms.uSunDirection.value.copy(direction);
     uniforms.uSunColor.value.set(sky.sunColor).multiplyScalar(sky.sunIntensity);
     uniforms.uZenith.value.set(sky.zenith);
@@ -78,21 +87,31 @@ export function createEnvironment(
     }
     // Distant land fades into the horizon colour; water does its own haze
     // per azimuth from the same sky function.
-    const haze = uniforms.uHorizon.value.clone().multiplyScalar(1.12);
-    scene.fog = new THREE.FogExp2(haze, sky.hazeDensity);
-    bake(sky);
+    haze.copy(uniforms.uHorizon.value).multiplyScalar(1.12);
+    if (scene.fog instanceof THREE.FogExp2) {
+      scene.fog.color.copy(haze);
+      scene.fog.density = sky.hazeDensity;
+    } else scene.fog = new THREE.FogExp2(haze, sky.hazeDensity);
+    if (rebake) bake(sky);
     scene.environmentIntensity = sky.environmentIntensity;
     // The IBL carries the sky's fill now; a fixed hemisphere on top of it
     // flattens every shadow.
-    hemisphere.intensity = 0;
+    const nightFill = Math.max(0, 1.4 - sky.sunIntensity);
+    hemisphere.color
+      .set(sky.horizon)
+      .lerp(fillColor.set(sky.sunColor), Math.min(0.55, nightFill * 0.5));
+    hemisphere.groundColor.set(sky.ground);
+    hemisphere.intensity = 0.18 + nightFill * 1.2;
     sun.color.set(sky.sunColor);
     sun.intensity = sky.sunIntensity;
     sun.position.copy(direction).multiplyScalar(60);
     sun.target.position.set(0, 0, 0);
     sun.target.updateMatrixWorld();
     renderer.toneMappingExposure = sky.exposure;
-    camera.far = sky.far;
-    camera.updateProjectionMatrix();
+    if (camera.far !== sky.far) {
+      camera.far = sky.far;
+      camera.updateProjectionMatrix();
+    }
     current = sky;
   }
 
@@ -114,7 +133,11 @@ export function createEnvironment(
 
   function useFlat(environment: WorldEnvironment): WorldLighting {
     scene.background = new THREE.Color(environment.background);
-    scene.fog = new THREE.Fog(environment.fog, environment.fogNear, environment.fogFar);
+    scene.fog = new THREE.Fog(
+      environment.fog,
+      environment.fogNear,
+      environment.fogFar,
+    );
     scene.environment = null;
     hemisphere.intensity = LEGACY.hemisphere;
     sun.color.set("#fff4da");
@@ -135,8 +158,8 @@ export function createEnvironment(
       return sky ? useSky(sky) : useFlat(environment);
     },
 
-    retune(sky) {
-      if (dome) tune(sky);
+    retune(sky, rebake = true) {
+      if (dome) tune(sky, rebake);
     },
 
     clear() {

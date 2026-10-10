@@ -1270,3 +1270,109 @@ kbd {
     display: none;
   }
 }
+/* Keep the sight line and the direct host's upper-right app control clear. */
+.pg-interaction {
+  top: auto;
+  bottom: 155px;
+  pointer-events: none;
+}
+.pg-interaction button {
+  pointer-events: auto;
+  font-size: 14px;
+  min-height: 44px;
+}
+.pg-interaction strong {
+  font-size: 14px;
+}
+.pg-explore-tools {
+  top: auto;
+  bottom: 94px;
+  right: 16px;
+  max-width: min(450px, calc(100% - 32px));
+  justify-content: flex-end;
+}
+.pg-explore-tools button {
+  min-width: 44px;
+  min-height: 44px;
+  touch-action: none;
+}
+.pg-explore-tools button:disabled {
+  opacity: 0.55;
+}
+.pg-explore-tools .pg-held {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+}
+.pg-journal-toggle {
+  position: absolute;
+  top: 76px;
+  left: 16px;
+  border: 0;
+  border-radius: 12px;
+  background: #fff6e3;
+  color: #243b33;
+  width: 44px;
+  height: 44px;
+  font-size: 24px;
+}
+.pg-journal {
+  top: 124px;
+  left: 16px;
+  right: auto;
+  max-width: min(310px, calc(100% - 32px));
+  max-height: calc(100% - 260px);
+}
+.pg-companion {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: #fff6e3;
+  border-radius: 14px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+@media (pointer: coarse) {
+  .pg-explore-tools {
+    bottom: 168px;
+    right: 12px;
+    max-width: calc(100% - 24px);
+    gap: 5px;
+  }
+  .pg-explore-note {
+    bottom: 232px;
+  }
+  .pg-interaction {
+    bottom: 225px;
+  }
+  .pg-journal {
+    max-height: calc(100% - 350px);
+  }
+}
+.pg-guide--compact {
+  width: min(380px, calc(100% - 32px));
+  max-height: 38%;
+  left: 16px;
+  right: auto;
+  top: auto;
+  bottom: 96px;
+  padding: 14px;
+}
+.pg-guide--compact .pg-guide-head small {
+  display: none;
+}
+.pg-guide--compact .pg-guide-line {
+  margin: 12px 0;
+  font-size: 14px;
+}
+.pg-guide--compact .pg-guide-ask[hidden] {
+  display: none;
+}
+@media (pointer: coarse) {
+  .pg-guide--compact {
+    bottom: 120px;
+    max-height: 45%;
+    overflow: auto;
+  }
+}

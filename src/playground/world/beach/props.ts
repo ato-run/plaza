@@ -58,7 +58,11 @@ function surface(
   dressed = new THREE.Color(1, 1, 1),
 ): Surface {
   return {
-    material: new THREE.MeshStandardMaterial({ color, roughness, metalness: 0 }),
+    material: new THREE.MeshStandardMaterial({
+      color,
+      roughness,
+      metalness: 0,
+    }),
     tile,
     dressed,
   };
@@ -105,7 +109,11 @@ async function dress(
  * axes its normal does not point along. Keeps texel density uniform across
  * parts of any size, with no stretched grain.
  */
-function boxUV(geometry: THREE.BufferGeometry, tile: number, grainAlongX = true): void {
+function boxUV(
+  geometry: THREE.BufferGeometry,
+  tile: number,
+  grainAlongX = true,
+): void {
   const position = geometry.getAttribute("position");
   const normal = geometry.getAttribute("normal");
   const uv = new Float32Array(position.count * 2);
@@ -232,10 +240,24 @@ function foamTexture(): THREE.CanvasTexture {
       const r = 2 + random() * 9;
       const tone = Math.round(90 + random() * 165);
       // Wrap each blob so the tile repeats without a seam.
-      for (const [dx, dy] of [[0, 0], [256, 0], [-256, 0], [0, 256], [0, -256]]) {
+      for (const [dx, dy] of [
+        [0, 0],
+        [256, 0],
+        [-256, 0],
+        [0, 256],
+        [0, -256],
+      ]) {
         ctx.fillStyle = `rgba(${tone},${tone},${tone},${0.5 + random() * 0.5})`;
         ctx.beginPath();
-        ctx.ellipse(x + dx, y + dy, r * 1.6, r, random() * Math.PI, 0, Math.PI * 2);
+        ctx.ellipse(
+          x + dx,
+          y + dy,
+          r * 1.6,
+          r,
+          random() * Math.PI,
+          0,
+          Math.PI * 2,
+        );
         ctx.fill();
       }
     }
@@ -377,7 +399,12 @@ function buildFountain(
   const foamMap = foamTexture();
   foamMap.repeat.set(3, 3);
   builder.trackResource(foamMap);
-  const foam = new THREE.RingGeometry(FOUNTAIN.columnRadius + 0.05, FOUNTAIN.columnRadius + 0.45, 64, 1);
+  const foam = new THREE.RingGeometry(
+    FOUNTAIN.columnRadius + 0.05,
+    FOUNTAIN.columnRadius + 0.45,
+    64,
+    1,
+  );
   foam.rotateX(-Math.PI / 2);
   foam.translate(0, FOUNTAIN.waterY + 0.006, 0);
   const foamMaterial = new THREE.MeshStandardMaterial({
@@ -397,10 +424,32 @@ function buildFountain(
   const random = seeded(9);
   for (let i = 0; i < dropletCount; i += 1) seeds[i] = random();
   const dropletGeometry = new THREE.BufferGeometry();
-  dropletGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  dropletGeometry.setAttribute(
+    "position",
+    new THREE.BufferAttribute(positions, 3),
+  );
+  const dropletCanvas = document.createElement("canvas");
+  dropletCanvas.width = 32;
+  dropletCanvas.height = 32;
+  const dropletCtx = dropletCanvas.getContext("2d")!,
+    gradient = dropletCtx.createRadialGradient(16, 16, 1, 16, 16, 15);
+  gradient.addColorStop(0, "rgba(255,255,255,.8)");
+  gradient.addColorStop(0.4, "rgba(255,255,255,.4)");
+  gradient.addColorStop(1, "rgba(255,255,255,0)");
+  dropletCtx.fillStyle = gradient;
+  dropletCtx.fillRect(0, 0, 32, 32);
+  const dropletMap = new THREE.CanvasTexture(dropletCanvas);
+  builder.trackResource(dropletMap);
   const droplets = new THREE.Points(
     dropletGeometry,
-    new THREE.PointsMaterial({ color: "#eef8f8", size: 0.05, transparent: true, opacity: 0.8, depthWrite: false }),
+    new THREE.PointsMaterial({
+      color: "#eef8f8",
+      map: dropletMap,
+      size: 0.035,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false,
+    }),
   );
   builder.track(droplets, group);
 
@@ -411,7 +460,9 @@ function buildFountain(
       streaks.offset.y = seconds * 0.9 * flow;
       foamMap.offset.set(seconds * 0.05 * flow, -seconds * 0.04 * flow);
       if (reducedMotion) return;
-      const attribute = dropletGeometry.getAttribute("position") as THREE.BufferAttribute;
+      const attribute = dropletGeometry.getAttribute(
+        "position",
+      ) as THREE.BufferAttribute;
       for (let i = 0; i < dropletCount; i += 1) {
         const seed = seeds[i];
         const t = ((seconds * 0.85 + seed) % 1) * 0.7;
@@ -435,12 +486,19 @@ function buildFountain(
  * One bench, merged into two geometries — the wood and the cast iron — so
  * each bench costs two draw calls rather than one per slat and frame part.
  */
-function benchGeometries(wood: Surface): { wood: THREE.BufferGeometry; iron: THREE.BufferGeometry } {
+function benchGeometries(wood: Surface): {
+  wood: THREE.BufferGeometry;
+  iron: THREE.BufferGeometry;
+} {
   const slats: THREE.BufferGeometry[] = [];
   // Seat: five slats with gaps, slightly crowned toward the middle.
   for (let i = 0; i < 5; i += 1) {
     const slat = roundedBox(2.6, 0.035, 0.085, 0.012, wood.tile);
-    slat.translate(0, 0.46 + Math.sin((i / 4) * Math.PI) * 0.008, 0.2 - i * 0.1);
+    slat.translate(
+      0,
+      0.46 + Math.sin((i / 4) * Math.PI) * 0.008,
+      0.2 - i * 0.1,
+    );
     slats.push(slat);
   }
   // Back: three slats leaning back.
@@ -485,8 +543,22 @@ function buildBench(
 
 /** One bench end frame: legs, seat rail, back upright, armrest (ends only show it). */
 function benchFrame(): THREE.BufferGeometry[] {
-  const make = (w: number, h: number, d: number, x: number, y: number, z: number, tilt = 0) => {
-    const geometry = new RoundedBoxGeometry(w, h, d, 2, Math.min(w, h, d) * 0.35);
+  const make = (
+    w: number,
+    h: number,
+    d: number,
+    x: number,
+    y: number,
+    z: number,
+    tilt = 0,
+  ) => {
+    const geometry = new RoundedBoxGeometry(
+      w,
+      h,
+      d,
+      2,
+      Math.min(w, h, d) * 0.35,
+    );
     geometry.rotateX(tilt);
     geometry.translate(x, y, z);
     return geometry;
@@ -510,7 +582,12 @@ function buildPlanter(
   masonry: Surface,
   cap: Surface,
   soil: THREE.Material,
-  parts: { body: THREE.BufferGeometry; capLong: THREE.BufferGeometry; capShort: THREE.BufferGeometry; soil: THREE.BufferGeometry },
+  parts: {
+    body: THREE.BufferGeometry;
+    capLong: THREE.BufferGeometry;
+    capShort: THREE.BufferGeometry;
+    soil: THREE.BufferGeometry;
+  },
 ): THREE.Group {
   const group = builder.group();
   group.position.set(x, 0, z);
@@ -562,12 +639,24 @@ export function buildPlazaProps(
     reducedMotion: boolean;
   },
 ): PlazaProps {
-  const limestone = surface("#d9cdb4", 1.36, 0.85, new THREE.Color(1.15, 1.12, 1.05));
+  const limestone = surface(
+    "#d9cdb4",
+    1.36,
+    0.85,
+    new THREE.Color(1.15, 1.12, 1.05),
+  );
   const masonry = surface("#c9b796", 2.0, 0.9, new THREE.Color(1.2, 1.12, 1.0));
   // The scan is a dark walnut; lifted toward weathered teak.
   const wood = surface("#9a7452", 0.6, 0.62, new THREE.Color(1.9, 1.6, 1.3));
-  const iron = new THREE.MeshStandardMaterial({ color: "#2c2a26", roughness: 0.42, metalness: 0.75 });
-  const soil = new THREE.MeshStandardMaterial({ color: "#5a4632", roughness: 1 });
+  const iron = new THREE.MeshStandardMaterial({
+    color: "#2c2a26",
+    roughness: 0.42,
+    metalness: 0.75,
+  });
+  const soil = new THREE.MeshStandardMaterial({
+    color: "#5a4632",
+    roughness: 1,
+  });
 
   const fountain = buildFountain(builder, limestone, options.reducedMotion);
 
@@ -625,12 +714,15 @@ export function buildPlazaProps(
       return new THREE.TubeGeometry(curve, 24, 0.018, 8, false);
     })(),
   };
-  const posts = options.lanterns.map(([x, z]) => buildPost(builder, x, z, iron, postParts));
+  const posts = options.lanterns.map(([x, z]) =>
+    buildPost(builder, x, z, iron, postParts),
+  );
 
   return {
     // No requests during construction. The engine schedules these refinements.
     deferred: [
-      () => dress(limestone, "coral_fort_wall_01", options.assets, options.signal),
+      () =>
+        dress(limestone, "coral_fort_wall_01", options.assets, options.signal),
       () => dress(masonry, "coral_stone_wall", options.assets, options.signal),
       () => dress(wood, "fine_grained_wood", options.assets, options.signal),
       () => hangLanterns(builder, posts, options.assets, options.signal),
@@ -650,16 +742,24 @@ async function scannedMaterial(
   size: number,
   options: { alpha?: boolean; glass?: boolean },
 ): Promise<THREE.MeshStandardMaterial> {
-  const load = (slot: string, colorSpace: THREE.ColorSpace, file = `${name}_${slot}_${size}.jpg`) =>
-    assets.texture(file, colorSpace, { flipY: false }).catch((error: unknown) => {
-      if (error instanceof LoadAborted) throw error;
-      return null;
-    });
+  const load = (
+    slot: string,
+    colorSpace: THREE.ColorSpace,
+    file = `${name}_${slot}_${size}.jpg`,
+  ) =>
+    assets
+      .texture(file, colorSpace, { flipY: false })
+      .catch((error: unknown) => {
+        if (error instanceof LoadAborted) throw error;
+        return null;
+      });
   const [map, normal, orm, alpha] = await Promise.all([
     load("color", THREE.SRGBColorSpace),
     load("normal", THREE.NoColorSpace),
     load("orm", THREE.NoColorSpace),
-    options.alpha ? load("alpha", THREE.NoColorSpace, `${name}_alpha_1k.jpg`) : Promise.resolve(null),
+    options.alpha
+      ? load("alpha", THREE.NoColorSpace, `${name}_alpha_1k.jpg`)
+      : Promise.resolve(null),
   ]);
   if (options.glass) {
     return new THREE.MeshPhysicalMaterial({
@@ -738,26 +838,39 @@ async function hangLanterns(
       for (const mesh of meshes) {
         const part = new THREE.Mesh(
           mesh.geometry,
-          (mesh.material as THREE.Material).name.includes("glass") ? glass : brass,
+          (mesh.material as THREE.Material).name.includes("glass")
+            ? glass
+            : brass,
         );
-        part.position.set(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2);
-        part.castShadow = !(mesh.material as THREE.Material).name.includes("glass");
+        part.position.set(
+          -(box.min.x + box.max.x) / 2,
+          -box.min.y,
+          -(box.min.z + box.max.z) / 2,
+        );
+        part.castShadow = !(mesh.material as THREE.Material).name.includes(
+          "glass",
+        );
         lantern.add(part);
       }
       const glow = new THREE.Mesh(flameGeometry, flame);
-      glow.position.set(0, (size.y * 0.42) , 0);
+      glow.position.set(0, size.y * 0.42, 0);
       lantern.add(glow);
       builder.track(lantern, post);
     }
     for (const mesh of meshes) (mesh.material as THREE.Material).dispose();
   } catch (error) {
     if (gltf && signal.aborted) disposeGltf(gltf);
-    if (!(error instanceof LoadAborted)) console.warn("[plaza] lantern unavailable");
+    if (!(error instanceof LoadAborted))
+      console.warn("[plaza] lantern unavailable");
   }
 }
 
 /** Plants per planter: species and how many of each, scattered along the box. */
-const PLANTINGS: readonly { model: string; material: string; height: number }[] = [
+const PLANTINGS: readonly {
+  model: string;
+  material: string;
+  height: number;
+}[] = [
   { model: "anthurium.glb", material: "anthurium_botany_01", height: 0.75 },
   { model: "calathea.glb", material: "calathea_orbifolia_01", height: 0.6 },
   { model: "fern.glb", material: "fern_02", height: 0.65 },
@@ -773,7 +886,12 @@ async function plantPlanters(
     PLANTINGS.map(async (planting) => {
       try {
         const gltf = await assets.model(planting.model);
-        const material = await scannedMaterial(assets, planting.material, 1024, { alpha: true });
+        const material = await scannedMaterial(
+          assets,
+          planting.material,
+          1024,
+          { alpha: true },
+        );
         if (signal.aborted) {
           disposeGltf(gltf);
           material.dispose();
@@ -787,27 +905,39 @@ async function plantPlanters(
           const centre = box.getCenter(new THREE.Vector3());
           geometry.translate(-centre.x, -box.min.y, -centre.z);
           const height = box.max.y - box.min.y;
-          geometry.scale(planting.height / height, planting.height / height, planting.height / height);
+          geometry.scale(
+            planting.height / height,
+            planting.height / height,
+            planting.height / height,
+          );
           return geometry;
         });
         return { variants, material };
       } catch (error) {
-        if (!(error instanceof LoadAborted)) console.warn(`[plaza] plant unavailable: ${planting.model}`);
+        if (!(error instanceof LoadAborted))
+          console.warn(`[plaza] plant unavailable: ${planting.model}`);
         return null;
       }
     }),
   );
   if (signal.aborted) return;
-  const available = species.filter((entry): entry is NonNullable<typeof entry> => !!entry);
+  const available = species.filter(
+    (entry): entry is NonNullable<typeof entry> => !!entry,
+  );
   if (available.length === 0) return;
   planters.forEach((planter, index) => {
     const random = seeded(300 + index * 17);
     const count = 5;
     for (let i = 0; i < count; i += 1) {
       const kind = available[(i + index) % available.length];
-      const geometry = kind.variants[Math.floor(random() * kind.variants.length)];
+      const geometry =
+        kind.variants[Math.floor(random() * kind.variants.length)];
       const plant = new THREE.Mesh(geometry, kind.material);
-      plant.position.set(-1.1 + (i / (count - 1)) * 2.2 + (random() - 0.5) * 0.18, 0.55, (random() - 0.5) * 0.4);
+      plant.position.set(
+        -1.1 + (i / (count - 1)) * 2.2 + (random() - 0.5) * 0.18,
+        0.55,
+        (random() - 0.5) * 0.4,
+      );
       plant.rotation.y = random() * Math.PI * 2;
       plant.scale.setScalar(0.85 + random() * 0.35);
       plant.castShadow = true;

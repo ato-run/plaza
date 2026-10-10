@@ -118,13 +118,16 @@ export function terrainHeight(x: number, z: number): number {
   const distance = shoreDistance(x, z);
   let height = profileHeight(distance);
   // A shallow basin carved into the same terrain sampled by the water shader.
-  const pool = Math.hypot(x + 19, z + 30);
+  const pool =
+    Math.hypot((x + 19) * 0.9, (z + 30) * 1.15) + Math.sin(x * 2.3 + z) * 0.08;
   if (pool < 2.4)
     height = Math.min(
       height,
       SEA_LEVEL - 0.14 * (1 - smoothstep(1.5, 2.4, pool)),
     );
   if (distance > BEACH_WIDTH) {
+    // Low dune shoulders leave a continuous shore/camp/lookout loop and hide the cove until approached.
+    height += 0.65 * Math.exp(-(((x + 27) / 3) ** 2 + ((z + 13) / 6) ** 2));
     // Dunes: only on dry land, rising away from the plaza edge.
     const inland = smoothstep(BEACH_WIDTH, BEACH_WIDTH + 14, distance);
     const away = smoothstep(FLAT_RADIUS, FLAT_RADIUS + 16, radius);

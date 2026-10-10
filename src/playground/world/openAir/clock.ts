@@ -6,6 +6,12 @@ export interface WorldMoment {
   weather: "clear" | "wind" | "rain";
   wind: number;
   day: number;
+  progress: number;
+  tideDirection: "rising" | "falling" | "high" | "low";
+  windX: number;
+  windZ: number;
+  currentX: number;
+  currentZ: number;
 }
 export function worldMoment(now: number): WorldMoment {
   const day = Math.floor(now / DAY_MS);
@@ -27,6 +33,19 @@ export function worldMoment(now: number): WorldMoment {
         : "clear";
   return {
     phase,
+    progress,
+    tideDirection:
+      Math.abs(Math.cos(now / 180000)) < 0.12
+        ? Math.sin(now / 180000) > 0
+          ? "high"
+          : "low"
+        : Math.cos(now / 180000) > 0
+          ? "rising"
+          : "falling",
+    windX: Math.cos(day * 0.7 + weatherIndex * 0.4),
+    windZ: Math.sin(day * 0.7 + weatherIndex * 0.4),
+    currentX: 0.8,
+    currentZ: -0.6,
     tide: Math.sin(now / 180000) * 0.18,
     weather,
     wind: weather === "wind" ? 1 : weather === "rain" ? 0.7 : 0.25,

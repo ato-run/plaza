@@ -28,8 +28,8 @@ export function lifeSchedule(
     )
       return {
         id: `camp-${resident.id}`,
-        x: 16.4 + (i % 3) * 1.3,
-        z: 13.7 + Math.floor(i / 3) * 0.8,
+        x: 14.5 + (i % 5) * 1.65,
+        z: 18.1 + Math.floor(i / 5) * 0.75,
         yaw: moment.phase === "sunset" ? 0 : Math.PI,
         pose: "stand",
         group: "camp",
@@ -42,7 +42,7 @@ export function lifeSchedule(
         fox: { x: 3.2, z: -9.8, label: "apps" },
         penguin: { x: 2, z: -30, label: "dance" },
         rabbit: { x: -24, z: 9, label: "exercise" },
-        bear: { x: 21, z: 15, label: "repair" },
+        bear: { x: 23, z: 17, label: "repair" },
         koala: { x: 9.5, z: 6.3, label: "flowers" },
         frog: { x: -16, z: -27, label: "crabs" },
         owl: { x: -19, z: -25, label: "shells" },
@@ -61,6 +61,7 @@ export function lifeSchedule(
   return {
     spotOf: targetOf,
     stateAt(i, seconds): ResidentState {
+      seconds -= i * 3.7;
       const period = Math.floor(seconds / 60),
         into = seconds - period * 60,
         key = `${i}:${period}`;

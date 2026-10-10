@@ -1,3 +1,14 @@
+import { encounterTitle, DISCOVERIES } from "./world/openAir/notebook";
+import {
+  actionWasApplied,
+  committedNotice,
+  interactionError,
+} from "./world/openAir/feedback";
+import {
+  beginVisualInput,
+  measureInteraction,
+  interactionMeasurements,
+} from "./world/openAir/metrics";
 import { PLAZA_ROOM_SCHEMA_ID } from "./roomProtocol";
 import { ExploreControls } from "./ExploreControls";
 import {
@@ -149,20 +160,6 @@ function parseRunnerProjection(value: unknown): PlaygroundRunnerState | null {
  * talking to one opens a conversation with a character, not with somebody
  * else in the plaza, and the label says so before you start.
  */
-function targetKindLabel(target: WorldTarget): string {
-  switch (target.kind) {
-    case "person":
-      return "NEAR YOU";
-    case "mascot":
-      return "NEIGHBOR";
-    case "guide":
-      return "PLAZA GUIDE";
-    case "seat":
-      return "SEAT";
-    default:
-      return target.kind.toUpperCase();
-  }
-}
 
 function targetTitle(target: WorldTarget): string {
   return target.kind === "person" ||
@@ -243,7 +240,9 @@ export default function PlaygroundPage() {
   }, [connected]);
   useEffect(() => {
     if (!menuOpen) return;
-    const frame = requestAnimationFrame(() => window.atoStartup.mark("first-action"));
+    const frame = requestAnimationFrame(() =>
+      window.atoStartup.mark("first-action"),
+    );
     return () => cancelAnimationFrame(frame);
   }, [menuOpen]);
   const identityTimeoutRef = useRef<number | undefined>(undefined);
@@ -282,6 +281,19 @@ export default function PlaygroundPage() {
     null,
   );
   const [settings, setSettings] = useState<ExploreSettings>(readSettings);
+  const pendingActionsRef = useRef(
+    new Map<
+      string,
+      { action: OpenAirAction; started: number; quiet: boolean }
+    >(),
+  );
+  const showInteractionFeedback = useCallback(
+    (message: string, pending = false) => {
+      worldRef.current?.feedback(message, pending);
+      setExploreStatus(worldRef.current?.exploreStatus() ?? null);
+    },
+    [],
+  );
   const sendOpenAirRef = useRef<(action: OpenAirAction) => void>(() => {});
   const syncOpenAir = useCallback(() => {
     worldRef.current?.setOpenAir(
@@ -303,6 +315,7 @@ export default function PlaygroundPage() {
       while (event) {
         pending.delete(event.seq);
         const op = event.op as { t?: string; action?: unknown } | null;
+        const before = openAirRef.current;
         openAirRef.current = applyOpenAir(
           openAirRef.current,
           event.seq,
@@ -314,11 +327,35 @@ export default function PlaygroundPage() {
             ? op.action
             : null,
         );
+        const interaction = pendingActionsRef.current.get(event.operation_id);
+        if (
+          interaction &&
+          event.actor_id === stateRef.current.viewer?.principal_id
+        ) {
+          pendingActionsRef.current.delete(event.operation_id);
+          const success = actionWasApplied(
+            before,
+            openAirRef.current,
+            event.actor_id,
+            interaction.action,
+          );
+          if (!interaction.quiet) {
+            showInteractionFeedback(
+              success
+                ? committedNotice(interaction.action)
+                : "The object or neighbor changed. Move closer and try again.",
+            );
+            measureInteraction(
+              `${interaction.action.kind}:commit`,
+              interaction.started,
+            );
+          }
+        }
         event = pending.get(openAirRef.current.cursor + 1);
       }
       syncOpenAir();
     },
-    [syncOpenAir],
+    [syncOpenAir, showInteractionFeedback],
   );
   const [talkingTo, setTalkingTo] = useState<NpcId>("nagi");
   const [guideStart, setGuideStart] = useState<GuideReply | null>(null);
@@ -376,10 +413,23 @@ export default function PlaygroundPage() {
     setGuideStart(
       last && Date.now() + clockOffsetRef.current - last.at < 900000
         ? {
-            text: `Hello again. I remember your ${last.kind}. Shall we explore the coast together?`,
+            text: `Hello again. ${encounterTitle(id, last.kind)}. Shall we try something else together?`,
             choices: residentGreeting(id, Date.now() / 1000).choices,
           }
-        : residentGreeting(id, Date.now() / 1000),
+        : (() => {
+            const observations =
+              openAirRef.current.observations[
+                stateRef.current.viewer?.principal_id ?? ""
+              ] ?? [];
+            const latest = observations.at(-1);
+            const greeting = residentGreeting(id, Date.now() / 1000);
+            return latest && DISCOVERIES[latest]
+              ? {
+                  ...greeting,
+                  text: `You explored ${DISCOVERIES[latest].title.toLowerCase()}. ${DISCOVERIES[latest].hint}`,
+                }
+              : greeting;
+          })(),
     );
     setTalkingTo(id);
     setGuideOpen(true);
@@ -1243,11 +1293,14 @@ export default function PlaygroundPage() {
     syncOpenAir();
     world.setSettings(settings);
     setWorldReady(true);
-    const unregisterRetention = typeof window.atoStartup.registerRetention === "function" ? window.atoStartup.registerRetention({
-      suspend: () => world.setPaused(true),
-      resume: () => world.setPaused(false),
-      memoryBytes: () => world.retainedBytes(),
-    }) : () => {};
+    const unregisterRetention =
+      typeof window.atoStartup.registerRetention === "function"
+        ? window.atoStartup.registerRetention({
+            suspend: () => world.setPaused(true),
+            resume: () => world.setPaused(false),
+            memoryBytes: () => world.retainedBytes(),
+          })
+        : () => {};
     return () => {
       unregisterRetention();
       world.dispose();
@@ -1366,33 +1419,72 @@ export default function PlaygroundPage() {
       );
       return;
     }
-    const invocation = transport.prepareMutation({ t: "openair", action });
+    const pose = worldRef.current?.viewerPose();
+    const started = performance.now();
+    beginVisualInput(action.kind);
+    const quiet =
+      action.kind === "renew" ||
+      action.kind === "push" ||
+      action.kind === "observe" ||
+      action.kind === "react" ||
+      (action.kind === "seat" && exploreStatus?.seated === action.id) ||
+      (action.kind === "lease" &&
+        !!openAirRef.current.leases[action.id] &&
+        !action.goal);
+    if (
+      !quiet &&
+      [...pendingActionsRef.current.values()].some((pending) => !pending.quiet)
+    )
+      return;
+    if (!quiet) showInteractionFeedback("Saving action…", true);
+    const operationId = crypto.randomUUID();
+    pendingActionsRef.current.set(operationId, { action, started, quiet });
+    const invocation = transport.prepareMutation(
+      {
+        t: "openair",
+        action,
+        ...(pose ? { pose: { ...pose, movement: "idle", pose: "stand" } } : {}),
+      },
+      operationId,
+    );
     void transport
       .invoke(invocation)
       .then(async (result) => {
         await catchUpRoomRef.current();
-        if (openAirRef.current.cursor < result.seq) return;
-        const own = stateRef.current.viewer?.principal_id ?? "",
-          now = Date.now() + clockOffsetRef.current;
-        if (
-          action.kind === "take" &&
-          heldItem(openAirRef.current, own, now) !== action.id
-        )
-          setError("Someone picked this up first. Try another object.");
-        if (
-          action.kind === "seat" &&
-          openAirRef.current.seats[action.id]?.owner !== own
-        )
-          setError("Someone is already using this seat. Try another seat.");
+        if (openAirRef.current.cursor < result.seq) {
+          if (!quiet)
+            showInteractionFeedback("Waiting for the shared result…", true);
+          return;
+        }
+        // Feedback is produced while processing this exact event, not from a later snapshot.
+        if (!quiet && pendingActionsRef.current.has(operationId))
+          showInteractionFeedback(
+            "Action saved; refreshing the shared result…",
+            true,
+          );
       })
-      .catch((err: unknown) =>
-        setError(
-          err instanceof Error
-            ? err.message
-            : "The action could not be saved. Please try again.",
-        ),
-      );
+      .catch((err: unknown) => {
+        pendingActionsRef.current.delete(operationId);
+        const message = interactionError(err);
+        if (!quiet) {
+          setError(message);
+          showInteractionFeedback(message);
+        }
+      });
   };
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      for (const [id, pending] of pendingActionsRef.current)
+        if (performance.now() - pending.started > 20000) {
+          pendingActionsRef.current.delete(id);
+          if (!pending.quiet)
+            showInteractionFeedback(
+              "The shared result could not be confirmed. Reconnect and check the object before trying again.",
+            );
+        }
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [showInteractionFeedback]);
   useEffect(() => {
     worldRef.current?.setSettings(settings);
     try {
@@ -1418,17 +1510,21 @@ export default function PlaygroundPage() {
           x: pose.x,
           z: pose.z,
         });
+      const held = own
+        ? heldItem(openAirRef.current, own, Date.now() + clockOffsetRef.current)
+        : null;
+      if (held && pose)
+        sendOpenAirRef.current({
+          kind: "renew",
+          id: held,
+          x: pose.x,
+          z: pose.z,
+        });
       for (const [id, lease] of Object.entries(openAirRef.current.leases))
         if (lease?.owner === own && lease.goal) {
-          const place = PLACE_BY_ID.get(lease.goal),
-            p = worldRef.current?.residentPosition(id);
-          if (
-            place &&
-            p &&
-            Math.hypot(p.x - place.x, p.z - place.z) < place.radius
-          )
-            worldRef.current?.holdNeighbor(id, false);
-          else worldRef.current?.holdNeighbor(id, true);
+          const p = worldRef.current?.residentPosition(id);
+          if (p && pose && Math.hypot(p.x - pose.x, p.z - pose.z) < 4)
+            worldRef.current?.holdNeighbor(id, true);
         }
     }, 10000);
     return () => {
@@ -1728,14 +1824,16 @@ export default function PlaygroundPage() {
       !guideOpen &&
       !menuOpen ? (
         <div className="pg-interaction">
-          <span className="pg-interaction-kind">{targetKindLabel(target)}</span>
-          <strong>{targetTitle(target)}</strong>
+          {target.kind !== "object" && <strong>{targetTitle(target)}</strong>}
           <button
             type="button"
             onClick={() => worldRef.current?.interactWithTarget()}
+            disabled={exploreStatus?.pending}
           >
-            {targetActionLabel(target)}
-            <kbd>E</kbd>
+            {target.kind === "object"
+              ? target.title
+              : targetActionLabel(target)}
+            <kbd>{settings.keys.interact.replace("Key", "")}</kbd>
           </button>
         </div>
       ) : null}
@@ -1761,6 +1859,11 @@ export default function PlaygroundPage() {
         status={exploreStatus}
         hidden={menuOpen || guideOpen || chatting}
         onUse={(throwing) => worldRef.current?.useHeld(throwing)}
+        onCharge={(on) => worldRef.current?.charge(on)}
+        onCancelCharge={() => worldRef.current?.cancelCharge()}
+        onRotate={() => worldRef.current?.rotateHeld()}
+        onMark={() => worldRef.current?.mark()}
+        onStopEscort={() => worldRef.current?.stopEscort()}
       />
 
       {exploreHint ? (
@@ -1785,6 +1888,7 @@ export default function PlaygroundPage() {
 
       <GuideDialog
         open={guideOpen}
+        currentPlace={exploreStatus?.place}
         npc={npcProfile(talkingTo)}
         context={guideContext()}
         start={guideStart ?? guideReply("greeting", guideContext())}
@@ -1922,7 +2026,10 @@ export default function PlaygroundPage() {
                 else setChatting(true);
               }}
             >
-              Talk<kbd>↵</kbd>
+              {isConversationTarget(target) && target && "name" in target
+                ? `Talk to ${target.name}`
+                : "Talk nearby"}
+              <kbd>↵</kbd>
             </button>
           ) : (
             <a
@@ -1967,7 +2074,8 @@ export default function PlaygroundPage() {
         <PressButton
           className="pg-action"
           aria-label="Jump"
-          onPress={() => worldRef.current?.jump()}
+          onPress={() => worldRef.current?.jump(true)}
+          onRelease={() => worldRef.current?.jump(false)}
         >
           <svg
             width="26"
@@ -2037,6 +2145,9 @@ export default function PlaygroundPage() {
         </form>
       ) : null}
 
+      <output hidden id="pg-input-measurements">
+        {JSON.stringify(interactionMeasurements())}
+      </output>
       {error ? (
         <div className="pg-notice" role="status">
           {error}
@@ -2142,6 +2253,7 @@ function MobileJoystick({
  */
 function PressButton({
   onPress,
+  onRelease,
   children,
   ...rest
 }: Omit<
@@ -2149,8 +2261,11 @@ function PressButton({
   "onClick" | "onPointerDown"
 > & {
   onPress: () => void;
+  onRelease?: () => void;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
+  const onReleaseRef = useRef(onRelease);
+  onReleaseRef.current = onRelease;
   const onPressRef = useRef(onPress);
   onPressRef.current = onPress;
   useEffect(() => {
@@ -2160,8 +2275,15 @@ function PressButton({
       event.preventDefault();
       onPressRef.current();
     };
+    const end = () => onReleaseRef.current?.();
     button.addEventListener("touchstart", start, { passive: false });
-    return () => button.removeEventListener("touchstart", start);
+    button.addEventListener("touchend", end);
+    button.addEventListener("touchcancel", end);
+    return () => {
+      button.removeEventListener("touchstart", start);
+      button.removeEventListener("touchend", end);
+      button.removeEventListener("touchcancel", end);
+    };
   }, []);
   return (
     <button
@@ -2173,6 +2295,8 @@ function PressButton({
         event.preventDefault();
         onPressRef.current();
       }}
+      onPointerUp={() => onReleaseRef.current?.()}
+      onPointerCancel={() => onReleaseRef.current?.()}
       onClick={(event) => {
         if (event.detail === 0) onPressRef.current(); // keyboard
       }}

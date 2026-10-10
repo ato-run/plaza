@@ -62,9 +62,9 @@ export function rippleTexture(size = 256): THREE.DataTexture {
     const foam = new Float64Array(size);
     for (let step = 0; step < size; step += 1) {
       // Normalize negative frequencies before indexing the periodic tables.
-      xPhase[step] = ((kx * step) % size + size) % size;
-      yPhase[step] = ((ky * step) % size + size) % size;
-      const angle = tau * step / size;
+      xPhase[step] = (((kx * step) % size) + size) % size;
+      yPhase[step] = (((ky * step) % size) + size) % size;
+      const angle = (tau * step) / size;
       const c = Math.cos(angle + phase) * amplitude * tau;
       normalX[step] = kx * c;
       normalY[step] = ky * c;
@@ -110,7 +110,10 @@ export function rippleTexture(size = 256): THREE.DataTexture {
  * geometrically toward the horizon. Static: the camera never leaves the
  * plaza, so there is nothing to follow.
  */
-function oceanGeometry(segments: number, nearSpacing: number): THREE.BufferGeometry {
+function oceanGeometry(
+  segments: number,
+  nearSpacing: number,
+): THREE.BufferGeometry {
   const radii: number[] = [0];
   let r = 0;
   let step = nearSpacing;
@@ -123,7 +126,11 @@ function oceanGeometry(segments: number, nearSpacing: number): THREE.BufferGeome
   for (let ring = 1; ring < radii.length; ring += 1) {
     for (let segment = 0; segment < segments; segment += 1) {
       const angle = (segment / segments) * Math.PI * 2;
-      positions.push(Math.sin(angle) * radii[ring], 0, -Math.cos(angle) * radii[ring]);
+      positions.push(
+        Math.sin(angle) * radii[ring],
+        0,
+        -Math.cos(angle) * radii[ring],
+      );
     }
   }
   const indices: number[] = [];
@@ -140,7 +147,10 @@ function oceanGeometry(segments: number, nearSpacing: number): THREE.BufferGeome
     }
   }
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(positions, 3),
+  );
   geometry.setIndex(indices);
   geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1400);
   return geometry;
@@ -308,7 +318,7 @@ void main() {
   alpha = mix(alpha, 1.0, body);
 
   // Soft waterline instead of a hard intersection with the sand.
-  float film = smoothstep(0.0, 0.025, depth);
+  float film = smoothstep(0.0, max(0.065, fwidth(depth) * 1.5), depth);
   color *= film;
   alpha *= film;
 

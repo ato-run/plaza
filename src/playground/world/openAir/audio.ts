@@ -1,3 +1,21 @@
+export function spatialPan(
+  x: number,
+  z: number,
+  sourceX: number,
+  sourceZ: number,
+  yaw: number,
+): number {
+  const dx = sourceX - x,
+    dz = sourceZ - z;
+  return Math.max(
+    -1,
+    Math.min(
+      1,
+      (dx * Math.cos(yaw) - dz * Math.sin(yaw)) /
+        Math.max(0.01, Math.hypot(dx, dz)),
+    ),
+  );
+}
 /** Procedural positional sound; no network downloads. Only start after a gesture. */
 export function createBeachAudio() {
   let context: AudioContext | null = null,
@@ -97,18 +115,18 @@ export function createBeachAudio() {
             160 + Math.sin(now / 70) * 30,
             0.24,
             0.03 * (1 - d / 18),
-            Math.sin(Math.atan2(-x, -z) - yaw),
+            spatialPan(x, z, 0, 0, yaw),
           );
       }
       if (now - lastFire > 750) {
         lastFire = now;
-        const d = Math.hypot(x - 18, z - 15);
+        const d = Math.hypot(x - 18, z - 18.4);
         if (d < 10)
           tone(
             70 + Math.sin(now) * 20,
             0.035,
             0.04 * (1 - d / 10),
-            Math.sin(Math.atan2(18 - x, 15 - z) - yaw),
+            spatialPan(x, z, 18, 18.4, yaw),
           );
       }
       if (now - lastBird > 13000) {
@@ -116,6 +134,30 @@ export function createBeachAudio() {
         tone(1250, 0.16, 0.035, Math.sin(yaw + 0.8));
         tone(1700, 0.22, 0.022, Math.sin(yaw + 0.8));
       }
+    },
+    landing(surface: "sand" | "stone" | "wood", speed: number) {
+      tone(
+        surface === "stone" ? 240 : surface === "wood" ? 160 : 85,
+        0.1,
+        Math.min(0.12, speed * 0.014),
+      );
+    },
+    activity(
+      x: number,
+      z: number,
+      sourceX: number,
+      sourceZ: number,
+      yaw: number,
+      kind: "crab" | "repair",
+    ) {
+      const distance = Math.hypot(x - sourceX, z - sourceZ);
+      if (distance < 8)
+        tone(
+          kind === "crab" ? 380 : 195,
+          0.045,
+          0.025 * (1 - distance / 8),
+          spatialPan(x, z, sourceX, sourceZ, yaw),
+        );
     },
     splash() {
       tone(120, 0.28, 0.16);

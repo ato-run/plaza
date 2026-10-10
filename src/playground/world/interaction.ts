@@ -74,7 +74,7 @@ export function interactableCandidate(
     return {
       item: { kind: cardKind, ref, title: interactable.title },
       position: interactable.anchor,
-      maxDistance: interactable.maxDistance,
+      maxDistance: Math.min(interactable.maxDistance ?? 3.4, 3.4),
     };
   }
   if (interactable.kind === "object") {
@@ -86,6 +86,7 @@ export function interactableCandidate(
       },
       position: interactable.anchor,
       maxDistance: interactable.maxDistance ?? 3.2,
+      minDot: 0.9,
     };
   }
   if (interactable.kind === "guide") {
@@ -96,7 +97,7 @@ export function interactableCandidate(
         name: interactable.title,
       },
       position: interactable.anchor,
-      maxDistance: interactable.maxDistance,
+      maxDistance: Math.min(interactable.maxDistance ?? 3.4, 3.4),
     };
   }
   if (interactable.kind === "mascot") {
@@ -107,13 +108,13 @@ export function interactableCandidate(
         name: interactable.title,
       },
       position: interactable.anchor,
-      maxDistance: interactable.maxDistance,
+      maxDistance: Math.min(interactable.maxDistance ?? 3.4, 3.4),
     };
   }
   return {
     item: { kind: "seat", seatId: interactable.id, title: interactable.title },
     position: interactable.anchor,
-    maxDistance: interactable.maxDistance,
+    maxDistance: Math.min(interactable.maxDistance ?? 3.4, 3.4),
   };
 }
 
@@ -129,6 +130,10 @@ export function resolveTarget(
   forward: THREE.Vector3,
   people: readonly PersonCandidate[],
   interactables: readonly Interactable[],
+  visible: (
+    position: TargetCandidate<WorldTarget>["position"],
+  ) => boolean = () => true,
+  preferred?: WorldTarget | null,
 ): WorldTarget | null {
   const candidates: TargetCandidate<WorldTarget>[] = [];
   for (const person of people) {
@@ -145,5 +150,18 @@ export function resolveTarget(
     const candidate = interactableCandidate(interactable);
     if (candidate) candidates.push(candidate);
   }
-  return chooseTarget(eye, forward, candidates);
+  const eligible = candidates.filter(
+    (candidate) =>
+      Math.hypot(
+        candidate.position.x - eye.x,
+        candidate.position.y - eye.y,
+        candidate.position.z - eye.z,
+      ) <= (candidate.maxDistance ?? 3.4) && visible(candidate.position),
+  );
+  const previous = eligible.find(
+    (candidate) => targetKey(candidate.item) === targetKey(preferred ?? null),
+  );
+  if (previous && chooseTarget(eye, forward, [previous], 0.91))
+    return previous.item;
+  return chooseTarget(eye, forward, eligible);
 }

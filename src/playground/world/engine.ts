@@ -1,3 +1,5 @@
+import { beginVisualInput, measureVisualFrame } from "./openAir/metrics";
+import { visibleSky } from "./openAir/lighting";
 import { mantleTarget } from "./openAir/mantle";
 import { createBeachAudio } from "./openAir/audio";
 import { readSettings, type ExploreSettings } from "./openAir/settings";
@@ -83,7 +85,7 @@ export interface Engine {
   setSettings(settings: ExploreSettings): void;
   setJoystick(x: number, y: number): void;
   /** Touch jump button (keyboard uses Space). Ignored while paused. */
-  jump(): void;
+  jump(held?: boolean): void;
   /**
    * Light the place as this time of day (an id from the World's
    * `timesOfDay`); kept across World switches, ignored by Worlds without it.
@@ -160,7 +162,12 @@ export function createEngine(options: EngineOptions): Engine {
   window.atoStartup.measure("renderer", performance.now() - rendererStarted);
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(64, width / height, 0.05, 110);
+  const camera = new THREE.PerspectiveCamera(
+    settings.fov,
+    width / height,
+    0.05,
+    110,
+  );
   camera.rotation.order = "YXZ";
 
   const reducedMotion =
@@ -218,6 +225,8 @@ export function createEngine(options: EngineOptions): Engine {
     if (dragLook || locked) return;
     dragLook = true;
     keys.clear();
+    jumpHeld = false;
+    world?.openAir?.cancelCharge();
     jumpRequested = false;
     mantle = null;
     options.onPointerLockChange(true, "drag");
@@ -227,6 +236,8 @@ export function createEngine(options: EngineOptions): Engine {
     dragLook = false;
     dragPointer = -1;
     keys.clear();
+    jumpHeld = false;
+    world?.openAir?.cancelCharge();
     jumpRequested = false;
     mantle = null;
     options.onPointerLockChange(false, "drag");
@@ -251,6 +262,18 @@ export function createEngine(options: EngineOptions): Engine {
   // (a step, a dune, the end of the last jump) is kept briefly and honoured
   // on landing instead of being dropped.
   let jumpRequestedAt = 0;
+  let jumpHeld = false,
+    lastGroundedAt = 0,
+    landingKick = 0,
+    seatedId: string | null = null;
+  let seatTurn: {
+    from: number;
+    to: number;
+    pitch: number;
+    elapsed: number;
+  } | null = null;
+  const pressed = (action: keyof ExploreSettings["keys"]) =>
+    keys.has(settings.keys[action]);
   const requestJump = () => {
     jumpRequested = true;
     jumpRequestedAt = performance.now();
@@ -288,6 +311,8 @@ export function createEngine(options: EngineOptions): Engine {
     locked = document.pointerLockElement === renderer.domElement;
     // Keys held when the lock breaks would otherwise stick down forever.
     keys.clear();
+    jumpHeld = false;
+    world?.openAir?.cancelCharge();
     jumpRequested = false;
     mantle = null;
     options.onPointerLockChange(locked, "lock");
@@ -296,6 +321,7 @@ export function createEngine(options: EngineOptions): Engine {
 
   on(document, "mousemove", (event) => {
     if (!locked || paused) return;
+    beginVisualInput("look");
     const mouse = event as MouseEvent;
     yaw -= mouse.movementX * 0.0022 * settings.sensitivity;
     pitch = clampPitch(
@@ -310,7 +336,14 @@ export function createEngine(options: EngineOptions): Engine {
   on(window, "keydown", (event) => {
     const keyboard = event as KeyboardEvent;
     const tag = (keyboard.target as HTMLElement | null)?.tagName;
-    if (paused || tag === "INPUT" || tag === "TEXTAREA") return;
+    if (
+      paused ||
+      tag === "INPUT" ||
+      tag === "TEXTAREA" ||
+      tag === "BUTTON" ||
+      tag === "SELECT"
+    )
+      return;
     if (keyboard.key === "Escape" && dragLook) {
       leaveDragLook();
       return;
@@ -328,21 +361,32 @@ export function createEngine(options: EngineOptions): Engine {
       return;
     }
     if (
-      (keyboard.code === "KeyQ" || keyboard.code === "KeyF") &&
+      (keyboard.code === settings.keys.place ||
+        keyboard.code === settings.keys.throw) &&
       !keyboard.repeat
     ) {
-      world?.openAir?.useHeld(keyboard.code === "KeyF");
+      if (keyboard.code === settings.keys.throw) world?.openAir?.charge(true);
+      else world?.openAir?.useHeld(false);
       return;
     }
-    if (keyboard.code === "KeyE") {
+    if (keyboard.code === settings.keys.rotate && !keyboard.repeat) {
+      world?.openAir?.rotateHeld();
+      return;
+    }
+    if (keyboard.code === settings.keys.mark && !keyboard.repeat) {
+      world?.openAir?.mark();
+      return;
+    }
+    if (keyboard.code === settings.keys.interact) {
       options.onInteract();
       return;
     }
-    if (keyboard.code === "Space") {
+    if (keyboard.code === settings.keys.jump) {
       // Jump is edge-triggered; holding Space must not bunny-hop from repeat.
       if (engaged() && !keyboard.repeat) {
         keyboard.preventDefault();
         requestJump();
+        jumpHeld = true;
       }
       return;
     }
@@ -351,20 +395,23 @@ export function createEngine(options: EngineOptions): Engine {
       options.onReaction(reactionIndex);
       return;
     }
-    if (
-      engaged() &&
-      ["KeyW", "KeyA", "KeyS", "KeyD", "KeyC", "ControlLeft"].includes(
-        keyboard.code,
-      )
-    ) {
+    if (engaged() && Object.values(settings.keys).includes(keyboard.code)) {
       if (keyboard.code !== "ControlLeft") keyboard.preventDefault();
+      beginVisualInput(keyboard.code.startsWith("Arrow") ? "look" : "movement");
       keys.add(keyboard.code);
     }
   });
 
-  on(window, "keyup", (event) => keys.delete((event as KeyboardEvent).code));
+  on(window, "keyup", (event) => {
+    const code = (event as KeyboardEvent).code;
+    keys.delete(code);
+    if (code === settings.keys.jump) jumpHeld = false;
+    if (!paused && code === settings.keys.throw) world?.openAir?.charge(false);
+  });
   on(window, "blur", () => {
     keys.clear();
+    jumpHeld = false;
+    world?.openAir?.cancelCharge();
     jumpRequested = false;
     mantle = null;
     joystick.x = 0;
@@ -393,6 +440,7 @@ export function createEngine(options: EngineOptions): Engine {
   on(renderer.domElement, "pointermove", (event) => {
     const pointer = event as PointerEvent;
     if (pointer.pointerId !== dragPointer || paused) return;
+    beginVisualInput("look");
     yaw -= (pointer.clientX - dragX) * 0.003 * settings.sensitivity;
     pitch = clampPitch(
       pitch -
@@ -461,11 +509,50 @@ export function createEngine(options: EngineOptions): Engine {
     let ahead = 0;
     if (!paused) {
       right =
-        (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0) + joystick.x;
+        (pressed("right") ? 1 : 0) - (pressed("left") ? 1 : 0) + joystick.x;
       ahead =
-        (keys.has("KeyW") ? 1 : 0) - (keys.has("KeyS") ? 1 : 0) + joystick.y;
+        (pressed("forward") ? 1 : 0) - (pressed("back") ? 1 : 0) + joystick.y;
+    }
+    if (!paused) {
+      yaw +=
+        ((pressed("lookLeft") ? 1 : 0) - (pressed("lookRight") ? 1 : 0)) *
+        dt *
+        1.6 *
+        settings.sensitivity;
+      pitch = clampPitch(
+        pitch +
+          ((pressed("lookUp") ? 1 : 0) - (pressed("lookDown") ? 1 : 0)) *
+            dt *
+            1.3 *
+            settings.sensitivity,
+      );
     }
     let seat = world?.openAir?.seat() ?? null;
+    if (seat && seatedId !== seat.id) {
+      if (!reducedMotion)
+        seatTurn = {
+          from: yaw,
+          to:
+            yaw +
+            Math.atan2(Math.sin(seat.yaw - yaw), Math.cos(seat.yaw - yaw)),
+          pitch,
+          elapsed: 0,
+        };
+      else {
+        yaw = seat.yaw;
+        pitch = -0.02;
+      }
+    }
+    if (seatTurn && seat) {
+      seatTurn.elapsed += dt;
+      const t = Math.min(1, seatTurn.elapsed / 0.24),
+        ease = t * t * (3 - 2 * t);
+      yaw = seatTurn.from + (seatTurn.to - seatTurn.from) * ease;
+      pitch = seatTurn.pitch + (-0.02 - seatTurn.pitch) * ease;
+      if (t === 1) seatTurn = null;
+    }
+    if (!seat) seatTurn = null;
+    seatedId = seat?.id ?? null;
     if (seat && !paused && (right || ahead || jumpRequested)) {
       world?.openAir?.stand();
       camera.position.z = seat.z - 1;
@@ -474,10 +561,15 @@ export function createEngine(options: EngineOptions): Engine {
       seat = null;
     }
     const crouching =
-      keys.has("KeyC") || keys.has("ControlLeft") || mobileCrouch;
+      pressed("crouch") || keys.has("ControlLeft") || mobileCrouch;
     const scale =
       world?.speedScale?.(camera.position.x, camera.position.z) ?? 1;
-    const speed = (crouching ? CROUCH_SPEED : WALK_SPEED) * scale;
+    const speed =
+      (crouching
+        ? CROUCH_SPEED
+        : pressed("run")
+          ? WALK_SPEED * 1.6
+          : WALK_SPEED) * scale;
     const { vx, vz, magnitude } = movementVector(
       { right, forward: ahead },
       yaw,
@@ -493,6 +585,8 @@ export function createEngine(options: EngineOptions): Engine {
         world?.walkable,
       );
       if (target) {
+        world?.openAir?.feedback("Climbing the ledge…");
+        audio.landing("stone", 2);
         mantle = {
           from: camera.position.clone(),
           x: target.x,
@@ -535,17 +629,30 @@ export function createEngine(options: EngineOptions): Engine {
     const groundEye =
       (groundY ? groundY(moved.x, moved.z) : 0) +
       (crouching ? CROUCH_EYE_HEIGHT : EYE_HEIGHT);
+    if (grounded) lastGroundedAt = now;
+    const coyoteJump =
+      jumpRequested && !grounded && vy <= 0 && now - lastGroundedAt < 100;
+    if (vy > 0 && !jumpHeld && now - jumpRequestedAt > 85)
+      vy = Math.min(vy, 2.2);
+    const impact = vy;
+    const wasGrounded = grounded;
     const vertical = stepVertical(
-      { y: camera.position.y, vy, grounded },
+      { y: camera.position.y, vy, grounded: grounded || coyoteJump },
       dt,
       groundEye,
       jumpRequested && !paused,
     );
     if (
       jumpRequested &&
-      (grounded || performance.now() - jumpRequestedAt > JUMP_BUFFER_MS)
+      (grounded ||
+        coyoteJump ||
+        performance.now() - jumpRequestedAt > JUMP_BUFFER_MS)
     ) {
       jumpRequested = false;
+    }
+    if (!wasGrounded && vertical.grounded && impact < -1) {
+      landingKick = Math.min(0.08, -impact * 0.008);
+      audio.landing(world?.openAir?.surface() ?? "sand", -impact);
     }
     vy = vertical.vy;
     grounded = vertical.grounded;
@@ -562,7 +669,11 @@ export function createEngine(options: EngineOptions): Engine {
       );
       vy = 0;
       grounded = progress === 1;
-      if (progress === 1) mantle = null;
+      if (progress === 1) {
+        mantle = null;
+        world?.openAir?.feedback("Climbed the ledge.");
+        audio.landing(world?.openAir?.surface() ?? "stone", 2);
+      }
     }
     if (seat) {
       camera.position.set(seat.x, seat.top + 0.9, seat.z);
@@ -584,20 +695,40 @@ export function createEngine(options: EngineOptions): Engine {
       const sound = world.openAir.takeSound();
       if (sound === "splash") audio.splash();
       else if (sound === "chime") audio.chime();
-      const mood =
-        timeOfDay ?? (moment.phase === "sunset" ? "magic-hour" : moment.phase);
-      const key = `${mood}:${moment.weather}`;
-      if (key !== skyKey) {
-        const sky = mountedDefinition?.environment.timesOfDay?.find(
-          (entry) => entry.id === mood,
-        )?.sky;
-        if (sky)
-          environment.retune(
-            moment.weather === "rain"
-              ? { ...sky, clouds: 0.95, sunIntensity: sky.sunIntensity * 0.45 }
-              : sky,
+      const worldNow = world.openAir.now();
+      const key = `${timeOfDay ?? Math.floor(worldNow / 15000)}:${moment.weather}`;
+      const sky = visibleSky(
+        mountedDefinition?.environment.timesOfDay ?? [],
+        worldNow,
+        timeOfDay,
+      );
+      if (sky)
+        environment.retune(
+          moment.weather === "rain"
+            ? { ...sky, clouds: 0.95, sunIntensity: sky.sunIntensity * 0.45 }
+            : sky,
+          key !== skyKey,
+        );
+      skyKey = key;
+      world.openAir.setLighting(timeOfDay);
+      if (Math.floor(now / 2800) !== Math.floor((now - frameMs) / 2800)) {
+        if (moment.weather !== "rain")
+          audio.activity(
+            camera.position.x,
+            camera.position.z,
+            -19,
+            -29,
+            yaw,
+            "crab",
           );
-        skyKey = key;
+        audio.activity(
+          camera.position.x,
+          camera.position.z,
+          23,
+          17,
+          yaw,
+          "repair",
+        );
       }
       audio.update(
         camera.position.x,
@@ -627,11 +758,24 @@ export function createEngine(options: EngineOptions): Engine {
       settings.motion && !reducedMotion && grounded && magnitude > 0.05
         ? Math.sin(now * 0.009) * 0.016
         : 0;
-    camera.position.y += bob;
+    landingKick *= Math.exp(-dt * 18);
+    const landingMotion = settings.motion && !reducedMotion ? -landingKick : 0;
+    const mantlePitch =
+      mantle && settings.motion && !reducedMotion
+        ? Math.sin(Math.min(1, mantle.elapsed / 0.24) * Math.PI) * 0.055
+        : 0;
+    camera.rotation.x -= mantlePitch;
+    camera.position.y += bob + landingMotion;
     const renderStarted = worldFirstFrame ? performance.now() : null;
     renderer.render(scene, camera);
-    if (renderStarted !== null) window.atoStartup.measure("first-frame", performance.now() - renderStarted);
-    camera.position.y -= bob;
+    measureVisualFrame();
+    if (renderStarted !== null)
+      window.atoStartup.measure(
+        "first-frame",
+        performance.now() - renderStarted,
+      );
+    camera.position.y -= bob + landingMotion;
+    camera.rotation.x += mantlePitch;
     // This is a render milestone, not proof of shared-state readiness or use.
     const rendered = worldFirstFrame;
     worldFirstFrame = null;
@@ -751,30 +895,46 @@ export function createEngine(options: EngineOptions): Engine {
     setSettings(next) {
       settings = next;
       audio.volume(next.volume);
+      camera.fov = next.fov;
+      camera.updateProjectionMatrix();
     },
     retainedBytes() {
       // Conservative budget estimate, including heap and GPU copies. It is
       // admission guidance, not a browser-process RSS measurement.
-      let bytes = 64 * 1024 * 1024 + renderer.domElement.width * renderer.domElement.height * 16;
-      const geometries = new Set<THREE.BufferGeometry>(), textures = new Set<THREE.Texture>();
-      scene.traverse(object => {
+      let bytes =
+        64 * 1024 * 1024 +
+        renderer.domElement.width * renderer.domElement.height * 16;
+      const geometries = new Set<THREE.BufferGeometry>(),
+        textures = new Set<THREE.Texture>();
+      scene.traverse((object) => {
         const mesh = object as THREE.Mesh;
         if (mesh.geometry) geometries.add(mesh.geometry);
-        const materials = mesh.material ? (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) : [];
-        for (const material of materials) for (const value of Object.values(material)) {
-          if (value instanceof THREE.Texture) textures.add(value);
-        }
+        const materials = mesh.material
+          ? Array.isArray(mesh.material)
+            ? mesh.material
+            : [mesh.material]
+          : [];
+        for (const material of materials)
+          for (const value of Object.values(material)) {
+            if (value instanceof THREE.Texture) textures.add(value);
+          }
       });
       for (const geometry of geometries) {
-        for (const attribute of Object.values(geometry.attributes)) bytes += attribute.array.byteLength * 2;
+        for (const attribute of Object.values(geometry.attributes))
+          bytes += attribute.array.byteLength * 2;
         bytes += (geometry.index?.array.byteLength ?? 0) * 2;
       }
       for (const texture of textures) {
-        const image = texture.image as { width?: number; height?: number } | undefined;
+        const image = texture.image as
+          | { width?: number; height?: number }
+          | undefined;
         if (!image?.width || !image.height) return Infinity;
-        bytes += image.width * image.height * 4 * (texture.generateMipmaps ? 3 : 2);
+        bytes +=
+          image.width * image.height * 4 * (texture.generateMipmaps ? 3 : 2);
       }
-      const heap = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize;
+      const heap = (
+        performance as Performance & { memory?: { usedJSHeapSize: number } }
+      ).memory?.usedJSHeapSize;
       return Number.isFinite(heap) ? Math.max(bytes, heap!) : bytes;
     },
     setPaused(next) {
@@ -794,12 +954,14 @@ export function createEngine(options: EngineOptions): Engine {
     },
 
     setJoystick(x, y) {
+      beginVisualInput("movement");
       joystick.x = x;
       joystick.y = y;
     },
 
-    jump() {
-      if (!paused) requestJump();
+    jump(held = true) {
+      jumpHeld = held;
+      if (!paused && held) requestJump();
     },
 
     setTimeOfDay(id) {

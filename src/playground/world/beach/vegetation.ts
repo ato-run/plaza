@@ -56,8 +56,18 @@ function frondTexture(): THREE.CanvasTexture {
         ctx.fillStyle = `rgb(${r},${g},${Math.round(38 * shade)})`;
         ctx.beginPath();
         ctx.moveTo(width / 2, y - base);
-        ctx.quadraticCurveTo(width / 2 + side * reach * 0.5, y - sweep * 0.25 - base * 3, tipX, tipY);
-        ctx.quadraticCurveTo(width / 2 + side * reach * 0.5, y - sweep * 0.25 + base * 2, width / 2, y + base);
+        ctx.quadraticCurveTo(
+          width / 2 + side * reach * 0.5,
+          y - sweep * 0.25 - base * 3,
+          tipX,
+          tipY,
+        );
+        ctx.quadraticCurveTo(
+          width / 2 + side * reach * 0.5,
+          y - sweep * 0.25 + base * 2,
+          width / 2,
+          y + base,
+        );
         ctx.closePath();
         ctx.fill();
       }
@@ -127,7 +137,12 @@ function grassTexture(): THREE.CanvasTexture {
       ctx.lineWidth = 2 + random() * 2;
       ctx.beginPath();
       ctx.moveTo(x, 256);
-      ctx.quadraticCurveTo(x + lean * 0.3, 256 - tall * 0.6, x + lean, 256 - tall);
+      ctx.quadraticCurveTo(
+        x + lean * 0.3,
+        256 - tall * 0.6,
+        x + lean,
+        256 - tall,
+      );
       ctx.stroke();
     }
   }
@@ -141,6 +156,7 @@ function grassTexture(): THREE.CanvasTexture {
 export interface WindUniforms {
   uTime: { value: number };
   uWindStrength: { value: number };
+  uWindDirection: { value: THREE.Vector2 };
 }
 
 /**
@@ -148,10 +164,15 @@ export interface WindUniforms {
  * sway this vertex rides (0 at the root, 1 in the crown), y how far out along
  * a frond or blade it is.
  */
-function addWind(material: THREE.Material, wind: WindUniforms, key: string): void {
+function addWind(
+  material: THREE.Material,
+  wind: WindUniforms,
+  key: string,
+): void {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = wind.uTime;
     shader.uniforms.uWindStrength = wind.uWindStrength;
+    shader.uniforms.uWindDirection = wind.uWindDirection;
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
@@ -159,7 +180,7 @@ function addWind(material: THREE.Material, wind: WindUniforms, key: string): voi
 attribute vec2 aSway;
 uniform float uTime;
 uniform float uWindStrength;
-const vec3 WIND_DIR = vec3(${WIND.x.toFixed(4)}, 0.0, ${WIND.z.toFixed(4)});`,
+uniform vec2 uWindDirection;`,
       )
       .replace(
         "#include <begin_vertex>",
@@ -169,7 +190,7 @@ const vec3 WIND_DIR = vec3(${WIND.x.toFixed(4)}, 0.0, ${WIND.z.toFixed(4)});`,
   float gust = 0.65 + 0.35 * sin(uTime * 0.37 + phase * 0.3);
   float trunk = aSway.x * aSway.x * (0.18 + 0.08 * sin(uTime * 0.9 + phase)) * gust;
   float frond = aSway.y * aSway.y * (0.32 + 0.2 * sin(uTime * 2.1 + phase * 3.0)) * gust;
-  transformed += WIND_DIR * (trunk + frond) * uWindStrength;
+  transformed += vec3(uWindDirection.x, 0.0, uWindDirection.y) * (trunk + frond) * uWindStrength;
   transformed.y += aSway.y * aSway.y * sin(uTime * 2.7 + phase * 5.0) * 0.07 * uWindStrength;
 }`,
       );
@@ -213,7 +234,9 @@ function trunkGeometry(spec: PalmSpec): THREE.BufferGeometry {
   for (let ring = 0; ring <= rings; ring += 1) {
     const t = ring / rings;
     const center = curve(t);
-    up.copy(curve(Math.min(1, t + 0.01))).sub(curve(Math.max(0, t - 0.01))).normalize();
+    up.copy(curve(Math.min(1, t + 0.01)))
+      .sub(curve(Math.max(0, t - 0.01)))
+      .normalize();
     side.set(1, 0, 0).sub(up.clone().multiplyScalar(up.x)).normalize();
     forward.crossVectors(up, side);
     const radius = 0.2 * (1.25 - 0.4 * t) * (1 + 0.6 * Math.exp(-t * 16));
@@ -221,9 +244,18 @@ function trunkGeometry(spec: PalmSpec): THREE.BufferGeometry {
       const angle = (s / sides) * Math.PI * 2;
       const bump = 1 + 0.03 * Math.sin(t * spec.height * 25.1 + s);
       positions.push(
-        center.x + (side.x * Math.cos(angle) + forward.x * Math.sin(angle)) * radius * bump,
-        center.y + (side.y * Math.cos(angle) + forward.y * Math.sin(angle)) * radius * bump,
-        center.z + (side.z * Math.cos(angle) + forward.z * Math.sin(angle)) * radius * bump,
+        center.x +
+          (side.x * Math.cos(angle) + forward.x * Math.sin(angle)) *
+            radius *
+            bump,
+        center.y +
+          (side.y * Math.cos(angle) + forward.y * Math.sin(angle)) *
+            radius *
+            bump,
+        center.z +
+          (side.z * Math.cos(angle) + forward.z * Math.sin(angle)) *
+            radius *
+            bump,
       );
       uvs.push(s / sides, t * spec.height);
       sway.push(t, 0);
@@ -237,7 +269,10 @@ function trunkGeometry(spec: PalmSpec): THREE.BufferGeometry {
     }
   }
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(positions, 3),
+  );
   geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
   geometry.setAttribute("aSway", new THREE.Float32BufferAttribute(sway, 2));
   geometry.setIndex(indices);
@@ -266,7 +301,11 @@ function frondGeometry(
   const indices: number[] = [];
   const point = origin.clone();
   const step = length / segments;
-  const horizontal = new THREE.Vector3(Math.sin(azimuth), 0, -Math.cos(azimuth));
+  const horizontal = new THREE.Vector3(
+    Math.sin(azimuth),
+    0,
+    -Math.cos(azimuth),
+  );
   const lateral = new THREE.Vector3(Math.cos(azimuth), 0, Math.sin(azimuth));
   for (let i = 0; i <= segments; i += 1) {
     const v = i / segments;
@@ -276,9 +315,14 @@ function frondGeometry(
       .multiplyScalar(Math.cos(pitch))
       .add(new THREE.Vector3(0, Math.sin(pitch), 0));
     if (i > 0) point.addScaledVector(direction, step);
-    const halfWidth = length * 0.24 * (0.18 + 0.82 * Math.pow(Math.sin(Math.PI * Math.min(1, v * 1.05)), 0.55));
+    const halfWidth =
+      length *
+      0.24 *
+      (0.18 + 0.82 * Math.pow(Math.sin(Math.PI * Math.min(1, v * 1.05)), 0.55));
     const lift = halfWidth * (0.42 - 0.5 * v); // the V flattens toward the tip
-    const surfaceUp = new THREE.Vector3().crossVectors(lateral, direction).normalize();
+    const surfaceUp = new THREE.Vector3()
+      .crossVectors(lateral, direction)
+      .normalize();
     for (const across of [-1, 0, 1]) {
       const p = point
         .clone()
@@ -293,10 +337,26 @@ function frondGeometry(
   for (let i = 0; i < segments; i += 1) {
     const a = i * 3;
     const b = a + 3;
-    indices.push(a, b, a + 1, a + 1, b, b + 1, a + 1, b + 1, a + 2, a + 2, b + 1, b + 2);
+    indices.push(
+      a,
+      b,
+      a + 1,
+      a + 1,
+      b,
+      b + 1,
+      a + 1,
+      b + 1,
+      a + 2,
+      a + 2,
+      b + 1,
+      b + 2,
+    );
   }
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(positions, 3),
+  );
   geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
   geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
   geometry.setAttribute("aSway", new THREE.Float32BufferAttribute(sway, 2));
@@ -317,14 +377,29 @@ function crownFronds(
   const start = random() * Math.PI * 2;
   for (let i = 0; i < count; i += 1) {
     const age = i / (count - 1); // 0 young (upright), 1 old (hanging)
-    const elevation = THREE.MathUtils.lerp(0.95, -0.15, age) + (random() - 0.5) * 0.2;
+    const elevation =
+      THREE.MathUtils.lerp(0.95, -0.15, age) + (random() - 0.5) * 0.2;
     const length = scale * (3.2 + random() * 1.1) * (age > 0.85 ? 0.9 : 1);
     const droop = THREE.MathUtils.lerp(0.9, 1.6, age) + random() * 0.3;
     const old = age > 0.8 && random() < 0.6;
     const tint = old
       ? new THREE.Color().setRGB(1.25, 1.0, 0.55)
-      : new THREE.Color().setRGB(0.9 + random() * 0.2, 0.95 + random() * 0.15, 0.85 + random() * 0.15);
-    out.push(frondGeometry(top, start + i * golden, elevation, length, droop, tint, swayBase));
+      : new THREE.Color().setRGB(
+          0.9 + random() * 0.2,
+          0.95 + random() * 0.15,
+          0.85 + random() * 0.15,
+        );
+    out.push(
+      frondGeometry(
+        top,
+        start + i * golden,
+        elevation,
+        length,
+        droop,
+        tint,
+        swayBase,
+      ),
+    );
   }
   return out;
 }
@@ -353,6 +428,7 @@ export function createVegetation(
   const wind: WindUniforms = {
     uTime: { value: 0 },
     uWindStrength: { value: reducedMotion ? 0 : 1 },
+    uWindDirection: { value: new THREE.Vector2(WIND.x, WIND.z) },
   };
   const frondMap = frondTexture();
   const barkMap = barkTexture();
@@ -379,12 +455,26 @@ export function createVegetation(
     };
     trunks.push(trunkGeometry(spec));
     const top = trunkCurve(spec)(1);
-    fronds.push(...crownFronds(top, random, 0.85 + placement.scale * 0.12, 11 + Math.floor(random() * 4), 1));
+    fronds.push(
+      ...crownFronds(
+        top,
+        random,
+        0.85 + placement.scale * 0.12,
+        11 + Math.floor(random() * 4),
+        1,
+      ),
+    );
     for (let n = 0; n < 4; n += 1) {
       const angle = random() * Math.PI * 2;
       const nut = nutShape.clone();
-      nut.translate(top.x + Math.cos(angle) * 0.22, top.y - 0.25 - random() * 0.12, top.z + Math.sin(angle) * 0.22);
-      const sway = new Float32Array(nut.getAttribute("position").count * 2).fill(1);
+      nut.translate(
+        top.x + Math.cos(angle) * 0.22,
+        top.y - 0.25 - random() * 0.12,
+        top.z + Math.sin(angle) * 0.22,
+      );
+      const sway = new Float32Array(
+        nut.getAttribute("position").count * 2,
+      ).fill(1);
       for (let k = 1; k < sway.length; k += 2) sway[k] = 0;
       nut.setAttribute("aSway", new THREE.BufferAttribute(sway, 2));
       nuts.push(nut);
@@ -401,7 +491,12 @@ export function createVegetation(
   });
 
   const objects: THREE.Object3D[] = [];
-  const resources: { dispose(): void }[] = [frondMap, barkMap, grassMap, nutShape];
+  const resources: { dispose(): void }[] = [
+    frondMap,
+    barkMap,
+    grassMap,
+    nutShape,
+  ];
 
   const barkMaterial = new THREE.MeshStandardMaterial({
     map: barkMap,
@@ -424,7 +519,10 @@ export function createVegetation(
   const frondMesh = new THREE.Mesh(mergeGeometries(fronds), frondMaterial);
   fronds.forEach((geometry) => geometry.dispose());
 
-  const nutMaterial = new THREE.MeshStandardMaterial({ color: "#5d4a2c", roughness: 0.7 });
+  const nutMaterial = new THREE.MeshStandardMaterial({
+    color: "#5d4a2c",
+    roughness: 0.7,
+  });
   addWind(nutMaterial, wind, "plaza-palm-nut");
   const nutMesh = new THREE.Mesh(mergeGeometries(nuts), nutMaterial);
   nuts.forEach((geometry) => geometry.dispose());
