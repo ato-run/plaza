@@ -864,6 +864,7 @@ kbd {
 /* ---- Nagi (guide) --------------------------------------------------------- */
 
 .pg-guide {
+  box-sizing: border-box;
   position: absolute;
   left: 50%;
   bottom: calc(96px + env(safe-area-inset-bottom));
@@ -943,7 +944,9 @@ kbd {
   margin-bottom: 12px;
 }
 
-.pg-guide-choices button {
+.pg-guide-choices button,
+.pg-guide-choice {
+  min-height: 44px;
   font: inherit;
   font-size: 13px;
   padding: 8px 14px;
@@ -1351,6 +1354,7 @@ kbd {
   }
 }
 .pg-guide--compact {
+  transform: none;
   width: min(380px, calc(100% - 32px));
   max-height: 38%;
   left: 16px;

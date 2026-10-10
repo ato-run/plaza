@@ -271,6 +271,15 @@ export function startWorld(
         },
       ]),
     );
+    // First-person visitors have no drawn avatar, but companions still need their pose.
+    const viewer = {
+      x: engine.camera.position.x,
+      y: engine.camera.position.y,
+      z: engine.camera.position.z,
+      yaw: engine.camera.rotation.y,
+    };
+    if (own) peerPositions.set(own, viewer);
+    if (selfPrincipalId) peerPositions.set(selfPrincipalId, viewer);
     for (const [social, actor] of peerAliases) {
       const p = peerPositions.get(actor);
       if (p) peerPositions.set(social, p);

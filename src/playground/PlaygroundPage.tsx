@@ -1422,7 +1422,6 @@ export default function PlaygroundPage() {
     }
     const pose = worldRef.current?.viewerPose();
     const started = performance.now();
-    beginVisualInput(action.kind);
     const quiet =
       action.kind === "renew" ||
       action.kind === "push" ||
@@ -1437,7 +1436,10 @@ export default function PlaygroundPage() {
       [...pendingActionsRef.current.values()].some((pending) => !pending.quiet)
     )
       return;
-    if (!quiet) showInteractionFeedback("Saving action…", true);
+    if (!quiet) {
+      beginVisualInput(action.kind);
+      showInteractionFeedback("Saving action…", true);
+    }
     const operationId = crypto.randomUUID();
     pendingActionsRef.current.set(operationId, { action, started, quiet });
     const invocation = transport.prepareMutation(
@@ -1524,7 +1526,8 @@ export default function PlaygroundPage() {
       for (const [id, lease] of Object.entries(openAirRef.current.leases))
         if (lease?.owner === own && lease.goal) {
           const p = worldRef.current?.residentPosition(id);
-          if (p && pose && Math.hypot(p.x - pose.x, p.z - pose.z) < 4)
+          // Waiting stops just beyond 4m; renew within the server's 4.5m reach.
+          if (p && pose && Math.hypot(p.x - pose.x, p.z - pose.z) < 4.4)
             worldRef.current?.holdNeighbor(id, true);
         }
     }, 10000);
