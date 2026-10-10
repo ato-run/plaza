@@ -45,7 +45,7 @@ describe("world asset startup", () => {
   it("keeps the common SDK byte-identical to its pinned distribution", async () => {
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(startupSource));
     expect([...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join(""))
-      .toBe("d4ff8dc34a839cf3a4143f4d221e6005db04ac4d4fac021ff77b59f66c4a2d1e");
+      .toBe("02cfdd73ffa0f471ef8d7fe930e47ac6b5ca87e94e41ab9f28410f392712e553");
   });
 
   it("waits for the rendered frame and a browser yield before loading, then runs groups sequentially", async () => {

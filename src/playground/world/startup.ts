@@ -11,6 +11,9 @@ declare global {
   interface Window {
     atoStartup: {
       readonly version: 1;
+      registerRetention(contract: { suspend(): void; resume(): void; memoryBytes(): number }): () => void;
+      measure(stage: string, duration: number): void;
+      mark(phase: "script-ready" | "first-render" | "interactive" | "connected" | "first-action" | "complete"): void;
       run(options: {
         signal: AbortSignal;
         critical(context: StartupContext): Promise<void>;
@@ -50,5 +53,10 @@ export function deferWorldAssets(
       console.warn("[plaza] optional world assets unavailable");
     }
   }).finally(() => disconnect());
-  return rendered;
+  return () => {
+    if (signal.aborted) return;
+    window.atoStartup.mark("first-render");
+    window.atoStartup.mark("interactive");
+    rendered();
+  };
 }

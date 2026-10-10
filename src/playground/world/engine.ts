@@ -79,6 +79,7 @@ export interface Engine {
   onFrame(handler: (frame: EngineFrame) => void): void;
   requestPointerLock(): void;
   setPaused(paused: boolean): void;
+  retainedBytes(): number;
   setSettings(settings: ExploreSettings): void;
   setJoystick(x: number, y: number): void;
   /** Touch jump button (keyboard uses Space). Ignored while paused. */
@@ -104,6 +105,7 @@ const NO_COLLIDERS: readonly Collider[] = [];
 const JUMP_BUFFER_MS = 150;
 
 export function createEngine(options: EngineOptions): Engine {
+  const rendererStarted = performance.now();
   let settings = readSettings();
   const audio = createBeachAudio();
   audio.volume(settings.volume);
@@ -155,6 +157,7 @@ export function createEngine(options: EngineOptions): Engine {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.2;
   host.appendChild(renderer.domElement);
+  window.atoStartup.measure("renderer", performance.now() - rendererStarted);
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(64, width / height, 0.05, 110);
@@ -625,7 +628,9 @@ export function createEngine(options: EngineOptions): Engine {
         ? Math.sin(now * 0.009) * 0.016
         : 0;
     camera.position.y += bob;
+    const renderStarted = worldFirstFrame ? performance.now() : null;
     renderer.render(scene, camera);
+    if (renderStarted !== null) window.atoStartup.measure("first-frame", performance.now() - renderStarted);
     camera.position.y -= bob;
     // This is a render milestone, not proof of shared-state readiness or use.
     const rendered = worldFirstFrame;
@@ -676,6 +681,7 @@ export function createEngine(options: EngineOptions): Engine {
       worldRoot = root;
       worldBuilder = builder;
 
+      const buildStarted = performance.now();
       const runtime = definition.build({
         root,
         builder,
@@ -685,6 +691,7 @@ export function createEngine(options: EngineOptions): Engine {
         lighting,
         signal: abort.signal,
       });
+      window.atoStartup.measure("world", performance.now() - buildStarted);
       world = runtime;
       groundY = runtime.groundY ?? null;
 
@@ -744,6 +751,31 @@ export function createEngine(options: EngineOptions): Engine {
     setSettings(next) {
       settings = next;
       audio.volume(next.volume);
+    },
+    retainedBytes() {
+      // Conservative budget estimate, including heap and GPU copies. It is
+      // admission guidance, not a browser-process RSS measurement.
+      let bytes = 64 * 1024 * 1024 + renderer.domElement.width * renderer.domElement.height * 16;
+      const geometries = new Set<THREE.BufferGeometry>(), textures = new Set<THREE.Texture>();
+      scene.traverse(object => {
+        const mesh = object as THREE.Mesh;
+        if (mesh.geometry) geometries.add(mesh.geometry);
+        const materials = mesh.material ? (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) : [];
+        for (const material of materials) for (const value of Object.values(material)) {
+          if (value instanceof THREE.Texture) textures.add(value);
+        }
+      });
+      for (const geometry of geometries) {
+        for (const attribute of Object.values(geometry.attributes)) bytes += attribute.array.byteLength * 2;
+        bytes += (geometry.index?.array.byteLength ?? 0) * 2;
+      }
+      for (const texture of textures) {
+        const image = texture.image as { width?: number; height?: number } | undefined;
+        if (!image?.width || !image.height) return Infinity;
+        bytes += image.width * image.height * 4 * (texture.generateMipmaps ? 3 : 2);
+      }
+      const heap = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize;
+      return Number.isFinite(heap) ? Math.max(bytes, heap!) : bytes;
     },
     setPaused(next) {
       if (next && !paused) resumeView = engaged();

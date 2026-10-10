@@ -238,6 +238,14 @@ export default function PlaygroundPage() {
     setMenuFocus(section);
     setMenuOpen(true);
   }, []);
+  useEffect(() => {
+    if (connected) window.atoStartup.mark("connected");
+  }, [connected]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const frame = requestAnimationFrame(() => window.atoStartup.mark("first-action"));
+    return () => cancelAnimationFrame(frame);
+  }, [menuOpen]);
   const identityTimeoutRef = useRef<number | undefined>(undefined);
 
   // ---- Conversations (Nagi and the residents), lessons and journeys -------
@@ -1235,7 +1243,13 @@ export default function PlaygroundPage() {
     syncOpenAir();
     world.setSettings(settings);
     setWorldReady(true);
+    const unregisterRetention = typeof window.atoStartup.registerRetention === "function" ? window.atoStartup.registerRetention({
+      suspend: () => world.setPaused(true),
+      resume: () => world.setPaused(false),
+      memoryBytes: () => world.retainedBytes(),
+    }) : () => {};
     return () => {
+      unregisterRetention();
       world.dispose();
       worldRef.current = null;
       setWorldReady(false);
