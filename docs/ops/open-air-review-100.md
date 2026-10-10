@@ -166,3 +166,51 @@ stagingのプレイで、会話パネルの旧中央寄せの変換が残って�
 予約・持ち物の自動更新は入力→描画のサンプルから除外する。共有確定の計測は引き続き本人が送った操作IDに結び付ける。
 
 会話パネルの実ブラウザ確認: 1280px画面では左16px・幅380px、390×844のviewportでは左16px・幅358pxで左右が収まる。「Continue conversation」も高さ44pxの共通ボタンにした。viewportの検証は実機スマホ・同時タッチの検証ではない。
+
+### 最終配信と検証
+
+Plazaの公開ソースは `31f0c49dbde97ae274ab34a9e96bc04c08f950bc`、branchは `feat/plaza-open-air-review-100`。
+staging revision 37、materialization `swm_plaza_kkA7EeNqG39242_V`、manifestは
+`sha256:228f569ce9c21bce0f173709937690e4b855e1f58ac03c4c3d605bb8edced9ee`。
+58ファイル・18,149,179 bytesを公開し、全ファイルとmanifestの読み戻しハッシュが一致した。
+DiscoverのPlazaを同revisionへ更新した。実ブラウザの新しいインスタンス
+`https://cinst-dubjnzasswrywhaz.stg-app.ato.run/` が同manifestの `index-D372IQrt.js` を参照することを確認した。
+
+- 最終コード: 型検査、build、259テスト / 30ファイル成功。初期JS 990.94kB（gzip 292.64kB）。500kBのchunk警告は残る。
+- 配信版: Nagiを正面で選択し、Enterで会話。1280px画面で左16px・幅380px、390×844のviewportで左16px・幅358px、会話ボタン高さ44pxを確認。画面外へのはみ出しはなく、会話相手を見ながら操作できる。viewportは元に戻した。
+- 同じ共有契約のrevision 35で、実操作のボール拾得444.9ms、投げる555.3msを確認。各1件の操作送信→その操作IDの共有状態適用の値であり、中央値やスマホの性能値ではない。
+- revision 36でキャンプの座席をEで使用し、共有確定、海へ向く着席、Wでの退席を確認。着席の共有適用649.5msは1件。座席の自己遮蔽と正面の柱・植栽の問題を確認済み。
+- ローカルとrevision 37の配信版で、ノートのボタンにフォーカスが残ったまま移動・視点操作が働き、Spaceでノートが閉じることを確認した。配信版はDOMのactiveElementが「Discovery journal」のBUTTONのまま、Wの描画サンプルが38→39、右矢印が17→18へ増えた。
+
+同行の配信版確認: Soraを会話の「Explore together」から桟橋へ誘い、共有確定後に歩行と待機が表示された。
+本人が静止した待機状態を09:12:01.350Zと09:12:53.075Zに記録し、51.725秒を超えて同行と「Say goodbye」が維持された。
+距離を離すと予約が終了することも確認した。Cloverの展望台への同行では、待機中の本人が近づくと
+「walking to Dune lookout」へ戻り、移動が再開した。岩と石段の経路も実際のキーとジャンプで通った。
+Calicoのキャンプへの同行は「at Beach camp」に到着し、その後「Say goodbye」をキーボードで選択。
+確定前は「Saving action…」と同行表示が残り、共有確定後に同行表示が消えた。
+到着はキャンプの1経路の確認であり、全住人・全同行先の実機合格を意味しない。音と到着後活動の人の評価は受入手順に残る。
+証跡はworkspaceの `.tmp/plaza-open-air-review-100/staging-escort-*-r37.*`。
+最終ブラウザの記録にconsole errorはなかった。長時間のツール操作中には入力→描画が遅いサンプルもあり、
+ローカルの短いコホートを全環境の性能保証へ拡張しない。
+
+revision 37の再読み込み後の操作サンプル: 移動39件は中央値16.4ms / p95 198.3ms、視点18件は29.3ms / 217.6ms、
+対象表示57件は17.4ms / 202.6ms。同行のclaim・開始4件の共有適用は中央値589.9ms / p95 645.0ms、
+明示的な解散1件は475.2ms。長時間の操作・ツール往復・背景タブを含む一回のIABセッションの値であり、
+実機スマホの入力遅延・FPSや全環境の性能を保証しない。元データは `staging-input-metrics-r37.json`。
+
+APIは既存stagingを保持したbranch `staging/plaza-open-air-review-20261010` のソース
+`08141d46cd04d04385b4b63801a0305775021faa`、Worker version
+`a3b78e9f-5e0f-4a55-a22e-e2e23dd07697` を配備した。health 200、43 secrets保持、
+既存キュレーションの認証境界401を確認。main未統合の既存機能を落としていない。
+mainベースのAPI PRでは型検査と79テスト / 4ファイル、staging統合では型検査と43テスト / 2ファイルが成功。
+Plazaの最終コードと生成APIアダプターの全16ソースハッシュも一致した。
+
+実stagingの3つの独立した認証クライアントでは、同時拾得の単一所有者、操作順・履歴・元のcommit時刻の一致、
+再試行の冪等性、他者の操作ID・偽の位置・偽のcheckpointの拒否、座席の排他、住人の反応記憶を確認。
+所持更新、投擲、砂模様、木を消費する修理、石による葉の支持、身体でのボール押しも3クライアントで収束した。
+実NPC chatも200。検証用の3 device sessionは終了時に失効させた。スクリプトの3クライアントは人間3人ではない。
+APIの証跡は `docs/ops/plaza-open-air-review-100.md` と `.tmp/open-air-review-100/live-acceptance.json`。
+
+Draft PR: [Plaza #20](https://github.com/ato-run/plaza/pull/20)、[API #767](https://github.com/ato-run/ato-api/pull/767)。
+GitHub Actionsは課金・spending limitにより6 jobsがstep開始前に停止し、CIは未実行。
+ローカルとstagingの成功をCI成功として扱わない。本番、migration、feature flagは変更していない。
